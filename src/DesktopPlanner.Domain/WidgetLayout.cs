@@ -1,6 +1,6 @@
 namespace DesktopPlanner.Domain;
 
-public enum WidgetType { Todo, Week, Completed, Inbox, Notes }
+public enum WidgetType { Todo, Week, Completed, Inbox, Notes, MonthTracker }
 // X/Y are physical virtual-desktop pixels; Width/Height are WPF device-independent units.
 public sealed class WidgetLayout
 {

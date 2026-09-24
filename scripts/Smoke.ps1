@@ -14,7 +14,7 @@ try {
     $process = Start-Process -FilePath $executable -ArgumentList $arguments -WindowStyle Hidden -PassThru
     if (-not $process.WaitForExit(30000)) { throw "Smoke test timed out; inspect process $($process.Id) and logs in $env:DESKTOPPLANNER_DATA_DIR" }
     if ($process.ExitCode -ne 0) { throw "Smoke test exit code: $($process.ExitCode)" }
-    foreach ($name in @('Todo', 'Week', 'Completed', 'Inbox', 'Notes')) {
+    foreach ($name in @('Todo', 'MonthTracker', 'Week', 'Completed', 'Inbox', 'Notes')) {
         if (-not (Test-Path -LiteralPath (Join-Path $env:DESKTOPPLANNER_DATA_DIR "$name.png"))) { throw "Missing image: $name" }
     }
     $textLogs = @(Get-ChildItem -LiteralPath (Join-Path $env:DESKTOPPLANNER_DATA_DIR 'logs') -Filter '*.txt')

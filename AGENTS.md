@@ -193,6 +193,12 @@ A change is done when:
 - Windows desktop integration is smoke/manual checked when affected;
 - installer/version files are unchanged unless intentionally part of the task.
 
+## Versioning
+
+- The project version is stored only in `Directory.Build.props` (`DesktopPlannerVersion`).
+- For a new release, change that single property; MSBuild, the installer script and Inno Setup consume it.
+- Do not add separate hardcoded release versions to project files, scripts or installer definitions.
+
 ## Response style
 
 After implementation, report only:

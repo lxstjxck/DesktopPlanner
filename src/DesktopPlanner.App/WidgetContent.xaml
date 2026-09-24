@@ -17,6 +17,7 @@
  </DataTemplate>
  <DataTemplate x:Key="Inbox"><local:InboxView DataContext="{Binding Calendar}"/></DataTemplate>
  <DataTemplate x:Key="Week"><local:WeekView DataContext="{Binding Calendar}"/></DataTemplate>
+ <DataTemplate x:Key="MonthTracker"><local:MonthTrackerView DataContext="{Binding MonthTracker}"/></DataTemplate>
 </ResourceDictionary>
 
 

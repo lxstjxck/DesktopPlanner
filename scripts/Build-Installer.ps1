@@ -1,10 +1,17 @@
 param(
-    [ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version = '0.1.2',
+    [string]$Version,
     [string]$CompilerPath,
     [switch]$SkipPublish
 )
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
+$propsPath = Join-Path $root 'Directory.Build.props'
+if (!(Test-Path -LiteralPath $propsPath)) { throw "Version source not found: $propsPath" }
+if (!$Version) {
+    [xml]$props = Get-Content -LiteralPath $propsPath -Raw
+    $Version = [string]($props.Project.PropertyGroup.DesktopPlannerVersion | Select-Object -First 1)
+}
+if ($Version -notmatch '^\d+\.\d+\.\d+$') { throw "Invalid DesktopPlanner version '$Version'. Expected major.minor.patch." }
 $publish = Join-Path $root 'artifacts/publish/win-x64'
 if (!$CompilerPath) {
     $portable = Join-Path $root '.data/tools/inno-6.7.3/ISCC.exe'
@@ -20,7 +27,7 @@ if (!(Test-Path -LiteralPath $CompilerPath)) { throw "Inno Setup compiler not fo
 if (!$SkipPublish) {
     # Publish to a fresh directory to prevent stale binaries entering an update.
     $stage = Join-Path $root ('artifacts/publish/build-' + [guid]::NewGuid().ToString('N'))
-    & dotnet publish (Join-Path $root 'src/DesktopPlanner.App') -c Release -r win-x64 --self-contained true '-p:PublishSingleFile=false' '-p:PublishTrimmed=false' "-p:Version=$Version" '-p:DebugType=None' '-p:DebugSymbols=false' -o $stage
+    & dotnet publish (Join-Path $root 'src/DesktopPlanner.App') -c Release -r win-x64 --self-contained true '-p:PublishSingleFile=false' '-p:PublishTrimmed=false' "-p:DesktopPlannerVersion=$Version" '-p:DebugType=None' '-p:DebugSymbols=false' -o $stage
     if ($LASTEXITCODE -ne 0) { throw 'dotnet publish failed.' }
     $publish = $stage
 }

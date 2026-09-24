@@ -9,6 +9,7 @@ public sealed class PlannerViewModel : ObservableObject
 {
     private readonly PlannerService service;
     public CalendarViewModel Calendar { get; }
+    public MonthTrackerViewModel MonthTracker { get; }
     private string newTitle = "", noteText = "", status = "Все изменения сохраняются автоматически";
     private bool loaded;
     public ObservableCollection<TaskItem> Todo { get; } = [];
@@ -22,9 +23,9 @@ public sealed class PlannerViewModel : ObservableObject
     public IAsyncRelayCommand<TaskItem> RestoreCommand { get; }
     public IAsyncRelayCommand<TaskItem> DeleteCommand { get; }
     public IAsyncRelayCommand<TaskItem> ShowInCalendarCommand { get; }
-    public PlannerViewModel(PlannerService service, CalendarViewModel calendar)
+    public PlannerViewModel(PlannerService service, CalendarViewModel calendar, MonthTrackerViewModel monthTracker)
     {
-        this.service = service; Calendar = calendar; Calendar.CalendarChanged += RefreshAsync;
+        this.service = service; Calendar = calendar; MonthTracker = monthTracker; Calendar.CalendarChanged += RefreshAsync;
         AddCommand = new AsyncRelayCommand(() => Guard(async () => { var title = NewTitle; await service.AddAsync(title); if (NewTitle == title) NewTitle = ""; await RefreshAsync(); }));
         CompleteCommand = new AsyncRelayCommand<TaskItem>(t => Mutate(t, service.CompleteAsync));
         RestoreCommand = new AsyncRelayCommand<TaskItem>(t => Mutate(t, service.RestoreAsync));
@@ -38,7 +39,7 @@ public sealed class PlannerViewModel : ObservableObject
             await Calendar.ShowTaskAsync(current);
         }), task => task?.CalendarEventId is not null && task.ScheduledStart is not null && !task.IsCompleted);
     }
-    public async Task LoadAsync() { NoteText = await service.GetNoteAsync(); await RefreshAsync(); await Calendar.LoadAsync(); loaded = true; }
+    public async Task LoadAsync() { NoteText = await service.GetNoteAsync(); await RefreshAsync(); await Calendar.LoadAsync(); await MonthTracker.LoadAsync(); loaded = true; }
     public async Task ResetDataAsync()
     {
         // The app disables input and drains pending commands before resetting.
@@ -48,6 +49,7 @@ public sealed class PlannerViewModel : ObservableObject
         {
             Todo.Clear(); Completed.Clear(); NewTitle = ""; NoteText = "";
             Calendar.ClearAfterReset();
+            MonthTracker.ClearAfterReset();
             Status = "Все данные удалены";
         }
         finally { loaded = true; }

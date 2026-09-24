@@ -75,7 +75,7 @@ public sealed class CalendarPersistenceTests : IDisposable
         var backup = Assert.Single(Directory.GetFiles(directory, "*.backup-*.db"));
         await using (var connection = new SqliteConnection($"Data Source={backup}"))
         { await connection.OpenAsync(); using var command = connection.CreateCommand(); command.CommandText = "SELECT Text FROM Notes"; Assert.Equal("Existing note", await command.ExecuteScalarAsync()); }
-        await using (var db = store.CreateContext()) Assert.Equal(4, (await db.Database.GetAppliedMigrationsAsync()).Count());
+        await using (var db = store.CreateContext()) Assert.Equal(5, (await db.Database.GetAppliedMigrationsAsync()).Count());
         await store.InitializeAsync(); Assert.Single(Directory.GetFiles(directory, "*.backup-*.db"));
     }
     [Fact] public async Task UnknownSchemaIsRejectedWithoutChangingRows()
@@ -94,7 +94,7 @@ public sealed class CalendarPersistenceTests : IDisposable
     {
         using var store = NewStore(); await store.InitializeAsync();
         await using var db = store.CreateContext();
-        Assert.Equal(4, (await db.Database.GetAppliedMigrationsAsync()).Count());
+        Assert.Equal(5, (await db.Database.GetAppliedMigrationsAsync()).Count());
         Assert.Empty(await db.Database.GetPendingMigrationsAsync()); Assert.False(db.Database.HasPendingModelChanges());
     }
     [Fact] public async Task StaleTodoCompletionDoesNotEraseCalendarSchedule()
@@ -132,10 +132,22 @@ public sealed class CalendarPersistenceTests : IDisposable
         var monitor = new MonitorArea("primary", 0, 0, 1920, 1080, 1, true);
         await store.ApplyLayoutPresetAsync(ReferenceLayout.Create(monitor), ReferenceLayout.Version);
         var week = (await store.GetLayoutsAsync()).Single(l => l.WidgetType == WidgetType.Week);
-        Assert.True(week.Width > 800); Assert.False(week.IsVisible); Assert.True(week.IsPositionLocked);
+        Assert.Equal(340, week.Width); Assert.False(week.IsVisible); Assert.True(week.IsPositionLocked);
         week.Width = 777; await store.SaveLayoutAsync(week);
         await store.ApplyLayoutPresetAsync(ReferenceLayout.Create(monitor), ReferenceLayout.Version);
         Assert.Equal(777, (await store.GetLayoutsAsync()).Single(l => l.WidgetType == WidgetType.Week).Width);
+    }
+    [Fact] public async Task NewPresetAddsTrackerWithoutMovingExistingWidgets()
+    {
+        using var store = NewStore(); await store.InitializeAsync();
+        await store.SaveLayoutAsync(new WidgetLayout { WidgetType = WidgetType.Week, X = 777, Y = 222, Width = 500 });
+        await store.SaveSettingAsync("LayoutPreset", ReferenceLayout.Version);
+        var monitor = new MonitorArea("primary", 0, 0, 1920, 1080, 1, true);
+        await store.ApplyLayoutPresetAsync(ReferenceLayout.Create(monitor), ReferenceLayout.Version);
+        var layouts = await store.GetLayoutsAsync();
+        var week = layouts.Single(l => l.WidgetType == WidgetType.Week);
+        Assert.Equal(777, week.X); Assert.Equal(222, week.Y); Assert.Equal(500, week.Width);
+        Assert.Contains(layouts, l => l.WidgetType == WidgetType.MonthTracker);
     }
     public void Dispose()
     { SqliteConnection.ClearAllPools(); if (Directory.Exists(directory)) Directory.Delete(directory, true); }

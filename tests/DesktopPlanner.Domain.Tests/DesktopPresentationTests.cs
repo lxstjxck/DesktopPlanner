@@ -2,17 +2,21 @@ using DesktopPlanner.Domain;
 namespace DesktopPlanner.Domain.Tests;
 public sealed class DesktopPresentationTests
 {
-    [Fact] public void ReferenceLayoutHasWideCalendarAndThreeLowerPanels()
+    [Fact] public void ReferenceLayoutPutsCompactCalendarTrackerBetweenTodoAndWeek()
     {
         var layouts = ReferenceLayout.Create(new("primary", 0, 0, 1920, 1040, 1, true));
         var todo = layouts.Single(l => l.WidgetType == WidgetType.Todo);
+        var tracker = layouts.Single(l => l.WidgetType == WidgetType.MonthTracker);
         var week = layouts.Single(l => l.WidgetType == WidgetType.Week);
         var done = layouts.Single(l => l.WidgetType == WidgetType.Completed);
         var inbox = layouts.Single(l => l.WidgetType == WidgetType.Inbox);
         var notes = layouts.Single(l => l.WidgetType == WidgetType.Notes);
-        Assert.Equal(todo.Y, week.Y); Assert.Equal(todo.Height, week.Height); Assert.True(week.Width > todo.Width * 2);
+        Assert.Equal(todo.Y, tracker.Y); Assert.Equal(tracker.Y, week.Y); Assert.Equal(todo.Height, week.Height);
+        Assert.True(todo.X < tracker.X && tracker.X < week.X); Assert.True(week.Width > todo.Width * 2);
+        Assert.True(tracker.Height < todo.Height);
+        Assert.InRange(tracker.Height / tracker.Width, 0.9, 1.2);
         Assert.Equal(done.Y, inbox.Y); Assert.Equal(inbox.Y, notes.Y); Assert.Equal(todo.X, done.X);
-        Assert.Equal(week.X, inbox.X); Assert.Equal(week.X + week.Width, notes.X + notes.Width, 5);
+        Assert.Equal(tracker.X, inbox.X); Assert.Equal(week.X + week.Width, notes.X + notes.Width, 5);
         foreach (var layout in layouts) { layout.Validate(); Assert.True(layout.X >= 0 && layout.Y >= 0); }
     }
     [Fact] public void ReferenceLayoutUsesPhysicalCoordinatesAndDipSizes()

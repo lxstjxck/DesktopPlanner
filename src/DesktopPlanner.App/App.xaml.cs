@@ -48,7 +48,7 @@ public partial class App : System.Windows.Application
             var collection = new ServiceCollection();
             collection.AddSingleton(_ => new SqlitePlannerStore(Path.Combine(directory, "planner.db")));
             collection.AddSingleton<IPlannerStore>(s => s.GetRequiredService<SqlitePlannerStore>());
-            collection.AddSingleton<CalendarService>(); collection.AddSingleton<CalendarViewModel>();
+            collection.AddSingleton<CalendarService>(); collection.AddSingleton<CalendarViewModel>(); collection.AddSingleton<MonthTrackerViewModel>();
             collection.AddSingleton<PlannerService>(); collection.AddSingleton<PlannerViewModel>(); collection.AddSingleton<WindowsOverlayService>();
             services = collection.BuildServiceProvider();
             var store = services.GetRequiredService<IPlannerStore>();
@@ -100,6 +100,8 @@ public partial class App : System.Windows.Application
                 planner.NoteText = "На этой неделе\n\n• Выбрать главное\n• Оставить время для отдыха\n\nЗаметки сохраняются автоматически.";
                 await planner.SaveNoteAsync();
                 var calendar = planner.Calendar;
+                await planner.MonthTracker.ToggleDayCommand.ExecuteAsync(DateTime.Today);
+                if (!(await store.GetHabitDayMarksAsync(DateTime.Today, DateTime.Today.AddDays(1))).Any()) throw new InvalidOperationException("Month tracker mark was not saved");
                 calendar.NewTitle = "Встреча с дизайнером"; calendar.NewDescription = "Обсудить макеты";
                 await calendar.AddInboxCommand.ExecuteAsync(null);
                 var inboxId = calendar.Inbox.Last().Id;
@@ -197,7 +199,8 @@ public partial class App : System.Windows.Application
                     throw new InvalidOperationException("Cancelling reset changed tasks");
                 await SmokeDiagnostics.VerifyResetDialogAsync(ResetDataAsync, QueueDesktopRefresh, true);
                 if (planner.Todo.Count != 0 || planner.Completed.Count != 0 || planner.NoteText != ""
-                    || planner.Calendar.Events.Count != 0 || planner.Calendar.Inbox.Count != 0)
+                    || planner.Calendar.Events.Count != 0 || planner.Calendar.Inbox.Count != 0
+                    || (await store.GetHabitDayMarksAsync(DateTime.Today, DateTime.Today.AddDays(1))).Count != 0)
                     throw new InvalidOperationException("Reset did not clear every widget");
                 await planner.SaveNoteAsync();
                 if ((await store.GetTasksAsync()).Count != 0 || await store.GetNoteAsync() != "" || await store.UndoCalendarAsync())

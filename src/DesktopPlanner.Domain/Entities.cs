@@ -64,3 +64,11 @@ public sealed class SyncMetadata
     public string? SyncToken { get; set; }
     public DateTime? LastSyncAt { get; set; }
 }
+
+public sealed class HabitDayMark
+{
+    public int Id { get; set; }
+    public DateTime Date { get; set; }
+    public string ColorHex { get; set; } = "";
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+}

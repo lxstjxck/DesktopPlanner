@@ -10,6 +10,7 @@ public sealed class PlannerDbContext(DbContextOptions<PlannerDbContext> options)
     public DbSet<CalendarEvent> Events => Set<CalendarEvent>();
     public DbSet<WidgetLayout> Layouts => Set<WidgetLayout>();
     public DbSet<Note> Notes => Set<Note>();
+    public DbSet<HabitDayMark> HabitDayMarks => Set<HabitDayMark>();
     protected override void OnModelCreating(ModelBuilder model)
     {
         model.Entity<TaskItem>().HasOne<CalendarEvent>().WithOne(e => e.Task)
@@ -22,6 +23,7 @@ public sealed class PlannerDbContext(DbContextOptions<PlannerDbContext> options)
         model.Entity<AppSetting>().HasKey(s => s.Key);
         model.Entity<CalendarAccount>();
         model.Entity<SyncMetadata>().HasOne<CalendarAccount>().WithMany().HasForeignKey(s => s.CalendarAccountId);
+        model.Entity<HabitDayMark>().HasIndex(m => m.Date).IsUnique();
     }
 }
 
@@ -51,6 +53,7 @@ public sealed partial class SqlitePlannerStore(string path) : IPlannerStore, IDi
         await db.Events.ExecuteDeleteAsync();
         await db.Set<UnscheduledEvent>().ExecuteDeleteAsync();
         await db.Notes.ExecuteDeleteAsync();
+        await db.HabitDayMarks.ExecuteDeleteAsync();
         await transaction.CommitAsync();
         calendarUndo.Clear();
         return true;
@@ -91,6 +94,18 @@ public sealed partial class SqlitePlannerStore(string path) : IPlannerStore, IDi
         await db.SaveChangesAsync(); return true;
     });
     public Task<List<WidgetLayout>> GetLayoutsAsync() => Run(db => db.Layouts.AsNoTracking().ToListAsync());
+    public Task<List<HabitDayMark>> GetHabitDayMarksAsync(DateTime from, DateTime to) =>
+        Run(db => db.HabitDayMarks.AsNoTracking().Where(m => m.Date >= from.Date && m.Date < to.Date).OrderBy(m => m.Date).ToListAsync());
+    public Task SaveHabitDayMarkAsync(HabitDayMark mark) => Run(async db =>
+    {
+        var date = mark.Date.Date;
+        var current = await db.HabitDayMarks.SingleOrDefaultAsync(m => m.Date == date);
+        if (current is null) db.HabitDayMarks.Add(new HabitDayMark { Date = date, ColorHex = mark.ColorHex, UpdatedAt = DateTime.UtcNow });
+        else { current.ColorHex = mark.ColorHex; current.UpdatedAt = DateTime.UtcNow; }
+        await db.SaveChangesAsync(); return true;
+    });
+    public Task DeleteHabitDayMarkAsync(DateTime date) => Run(async db =>
+    { await db.HabitDayMarks.Where(m => m.Date == date.Date).ExecuteDeleteAsync(); return true; });
     public Task SaveLayoutAsync(WidgetLayout layout)
     {
         layout.Validate();
@@ -179,21 +194,24 @@ public sealed partial class SqlitePlannerStore(string path) : IPlannerStore, IDi
     public Task ApplyLayoutPresetAsync(IReadOnlyList<WidgetLayout> layouts, string version, bool force = false) => Run(async db =>
     {
         var setting = await db.Set<AppSetting>().FindAsync("LayoutPreset");
-        if (!force && setting?.Value == version) return false;
+        var changed = false;
         await using var transaction = await db.Database.BeginTransactionAsync();
         foreach (var layout in layouts)
         {
             layout.Validate();
             var current = await db.Layouts.SingleOrDefaultAsync(l => l.WidgetType == layout.WidgetType);
-            if (current is null) db.Layouts.Add(layout);
-            else
+            if (current is null) { db.Layouts.Add(layout); changed = true; }
+            else if (force)
             {
                 current.X = layout.X; current.Y = layout.Y; current.Width = layout.Width; current.Height = layout.Height;
                 current.Scale = layout.Scale; current.Opacity = layout.Opacity; current.MonitorId = layout.MonitorId;
+                changed = true;
             }
         }
-        if (setting is null) db.Add(new AppSetting { Key = "LayoutPreset", Value = version }); else setting.Value = version;
-        await db.SaveChangesAsync(); await transaction.CommitAsync(); return true;
+        if (setting is null) { db.Add(new AppSetting { Key = "LayoutPreset", Value = version }); changed = true; }
+        else if (setting.Value != version) { setting.Value = version; changed = true; }
+        if (changed) await db.SaveChangesAsync();
+        await transaction.CommitAsync(); return changed;
     });
     public void Dispose() => gate.Dispose();
 }

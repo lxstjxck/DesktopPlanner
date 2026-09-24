@@ -23,10 +23,10 @@ public partial class WidgetWindow : Window
     {
         InitializeComponent();
         Layout = layout; this.store = store; this.overlay = overlay; DataContext = vm;
-        Title = Heading.Text = layout.WidgetType switch { WidgetType.Todo => "Задачи", WidgetType.Notes => "Заметки", WidgetType.Completed => "Готово", WidgetType.Week => "Неделя", _ => "События" };
+        Title = Heading.Text = layout.WidgetType switch { WidgetType.Todo => "Задачи", WidgetType.Notes => "Заметки", WidgetType.Completed => "Готово", WidgetType.Week => "Неделя", WidgetType.MonthTracker => "Трекер", _ => "События" };
         Resources.MergedDictionaries.Add(new ResourceDictionary { Source = new Uri("WidgetContent.xaml", UriKind.Relative) });
         Body.Content = vm; Body.ContentTemplate = (DataTemplate)FindResource(layout.WidgetType.ToString());
-        if (layout.WidgetType is WidgetType.Week or WidgetType.Inbox) Footer.Visibility = Visibility.Collapsed;
+        if (layout.WidgetType is WidgetType.Week or WidgetType.Inbox or WidgetType.MonthTracker) Footer.Visibility = Visibility.Collapsed;
         Width = layout.Width; Height = layout.Height; ApplyBackgroundOpacity();
         ApplyScale();
         SourceInitialized += (_, _) => { overlay.Place(Handle, Layout.X, Layout.Y); initialized = true; RefreshGlass(); };
