@@ -60,6 +60,8 @@ public sealed class PlannerViewModel : ObservableObject
         catch (Exception ex) { Serilog.Log.Error(ex, "Planner operation failed"); Status = "Ошибка сохранения: " + ex.Message; }
     }
     public async Task SaveNoteAsync() { await service.SaveNoteAsync(NoteText); Status = "Заметка сохранена"; }
+    public async Task RenameAsync(TaskItem task, string title)
+        => await Guard(async () => { await service.RenameAsync(task, title); await RefreshAsync(); await Calendar.RefreshAsync(); });
     public Task? ReorderTask { get; private set; }
     public Task ReorderAsync(Guid source, Guid target) => ReorderTask = ReorderCoreAsync(source, target);
     private async Task ReorderCoreAsync(Guid source, Guid target)

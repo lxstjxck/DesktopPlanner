@@ -16,6 +16,14 @@ public sealed class PlannerService(IPlannerStore store)
     { task.Complete(DateTime.UtcNow); await store.SaveTaskAsync(task); }
     public async Task RestoreAsync(TaskItem task)
     { task.Restore(DateTime.UtcNow); await store.SaveTaskAsync(task); }
+    public async Task RenameAsync(TaskItem task, string title)
+    {
+        title = title.Trim();
+        if (title.Length == 0) return;
+        task.Title = title;
+        task.UpdatedAt = DateTime.UtcNow;
+        await store.SaveTaskAsync(task);
+    }
     public Task DeleteAsync(TaskItem task) => store.DeleteTaskAsync(task.Id);
     public Task ReorderAsync(IReadOnlyList<Guid> ids) => store.SaveTaskOrderAsync(ids);
     public Task<string> GetNoteAsync() => store.GetNoteAsync();
@@ -23,7 +31,7 @@ public sealed class PlannerService(IPlannerStore store)
 }
 public static class SchedulingService
 {
-    public static DateTime Snap(DateTime time, int minutes = 15)
+    public static DateTime Snap(DateTime time, int minutes = 30)
     {
         if (minutes <= 0 || 60 % minutes != 0) throw new ArgumentOutOfRangeException(nameof(minutes));
         var interval = TimeSpan.FromMinutes(minutes).Ticks;

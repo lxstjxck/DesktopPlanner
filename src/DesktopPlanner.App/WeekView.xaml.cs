@@ -52,7 +52,7 @@ public partial class WeekView : UserControl
         {
             var from = TimeSpan.FromHours(Scroller.VerticalOffset / hourHeight);
             var to = TimeSpan.FromHours(Math.Min(24, (Scroller.VerticalOffset + Scroller.ViewportHeight) / hourHeight));
-            RangeLabel.Text = $"{from.Hours:00}:{from.Minutes:00} — {(int)to.TotalHours:00}:{to.Minutes:00} · шаг 15 мин";
+            RangeLabel.Text = $"{from.Hours:00}:{from.Minutes:00} — {(int)to.TotalHours:00}:{to.Minutes:00} · шаг 30 мин";
         }
         if (e.ViewportWidthChange != 0 || e.ViewportHeightChange != 0) Render();
     }
@@ -105,7 +105,7 @@ public partial class WeekView : UserControl
         }
         var width = Math.Max(WeekGeometry.TimeGutter + 7 * 56, Scroller.ViewportWidth);
         if (!double.IsFinite(width)) return;
-        hourHeight = detailed ? 76 : Math.Max(14, (Scroller.ViewportHeight - 1) / 24);
+        hourHeight = detailed ? 48 : Math.Max(14, (Scroller.ViewportHeight - 1) / 24);
         Board.Height = DayHeight;
         Surface.Width = width; Board.Width = width; Days.Width = width;
         dayWidth = (width - WeekGeometry.TimeGutter) / 7;
@@ -128,13 +128,13 @@ public partial class WeekView : UserControl
             }
         }
         for (var i = 0; i <= 7; i++) Line(WeekGeometry.TimeGutter + i * dayWidth, 0, WeekGeometry.TimeGutter + i * dayWidth, DayHeight);
-        for (var quarter = 0; quarter <= 96; quarter++)
+        for (var halfHour = 0; halfHour <= 48; halfHour++)
         {
-            var y = quarter * hourHeight / 4;
-            if (quarter % 4 == 0 || detailed) Line(WeekGeometry.TimeGutter, y, width, y, quarter % 4 == 0 ? .75 : .2);
-            if (quarter % 4 == 0 && quarter < 96)
+            var y = halfHour * hourHeight / 2;
+            Line(WeekGeometry.TimeGutter, y, width, y, halfHour % 2 == 0 ? .75 : .2);
+            if (halfHour % 2 == 0 && halfHour < 48)
             {
-                var label = new TextBlock { Text = $"{quarter / 4:00}:00", FontSize = detailed ? 12 : 9, Opacity = .85 };
+                var label = new TextBlock { Text = $"{halfHour / 2:00}:00", FontSize = detailed ? 12 : 9, Opacity = .85 };
                 Canvas.SetLeft(label, 1); Canvas.SetTop(label, Math.Min(DayHeight - 14, y + 2)); Board.Children.Add(label);
             }
         }
@@ -157,14 +157,14 @@ public partial class WeekView : UserControl
         Canvas.SetTop(block, segmentTop);
         Canvas.SetLeft(block, WeekGeometry.TimeGutter + segment.Day * dayWidth + segment.Column * dayWidth / segment.ColumnCount + 2);
         var content = new Grid(); block.Child = content;
-        var label = new TextBlock { Text = $"{item.Start:HH:mm} {item.Title}", TextWrapping = TextWrapping.Wrap, FontSize = detailed ? 12 : 9, Margin = new Thickness(4, 0, 3, 3), Foreground = item.ColorHex is not null && (.2126 * eventColor.R + .7152 * eventColor.G + .0722 * eventColor.B) > 150 ? new SolidColorBrush(Color.FromRgb(18, 28, 43)) : Brushes.White };
-        var text = new Grid { Margin = new Thickness(0, 0, 0, segment.CanResize ? 6 : 1), IsHitTestVisible = false };
+        var label = new TextBlock { Text = $"{item.Start:HH:mm} {item.Title}", TextWrapping = TextWrapping.Wrap, TextTrimming = TextTrimming.CharacterEllipsis, FontSize = detailed ? 12 : 9, Margin = new Thickness(4, 2, 3, 1), Foreground = item.ColorHex is not null && (.2126 * eventColor.R + .7152 * eventColor.G + .0722 * eventColor.B) > 150 ? new SolidColorBrush(Color.FromRgb(18, 28, 43)) : Brushes.White };
+        var text = new Grid { Margin = new Thickness(0, 0, 0, segment.CanResize ? 6 : 1), IsHitTestVisible = false, ClipToBounds = true };
         text.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         text.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         text.Children.Add(label); content.Children.Add(text);
         if (!string.IsNullOrWhiteSpace(item.Description))
         {
-            label.MaxHeight = Math.Max(12, (block.Height - 6) / 2);
+            label.MaxHeight = Math.Max(12, (block.Height - 8) / 2);
             label.TextTrimming = TextTrimming.CharacterEllipsis;
             var description = new TextBlock { Text = item.Description.Trim(), TextWrapping = TextWrapping.Wrap,
                 TextTrimming = TextTrimming.CharacterEllipsis, FontSize = detailed ? 11 : 9,
@@ -204,16 +204,16 @@ public partial class WeekView : UserControl
             thumb.DragDelta += (_, e) =>
             {
                 delta += e.VerticalChange; block.Height = Math.Max(9, segmentHeight + delta - 1);
-                var minutes = Math.Round(delta / hourHeight * 60 / 15, MidpointRounding.AwayFromZero) * 15;
-                var end = item.End.AddMinutes(minutes); if (end < item.Start.AddMinutes(15)) end = item.Start.AddMinutes(15);
+                var minutes = Math.Round(delta / hourHeight * 60 / 30, MidpointRounding.AwayFromZero) * 30;
+                var end = item.End.AddMinutes(minutes); if (end < item.Start.AddMinutes(30)) end = item.Start.AddMinutes(30);
                 RangeLabel.Text = $"{item.Start:HH:mm} → {end:HH:mm} · {(end - item.Start).TotalMinutes:0} мин";
                 label.Text = $"{item.Start:HH:mm}–{end:HH:mm}\n{item.Title}";
             };
             thumb.DragCompleted += async (_, e) =>
             {
-                var minutes = Math.Round(delta / hourHeight * 60 / 15, MidpointRounding.AwayFromZero) * 15;
+                var minutes = Math.Round(delta / hourHeight * 60 / 30, MidpointRounding.AwayFromZero) * 30;
                 var end = item.End.AddMinutes(minutes);
-                if (end < item.Start.AddMinutes(15)) end = item.Start.AddMinutes(15);
+                if (end < item.Start.AddMinutes(30)) end = item.Start.AddMinutes(30);
                 block.Height = Math.Max(9, segmentHeight - 1);
                 if (!e.Canceled && model is not null && end != item.End) await model.ResizeAsync(item.Id, end);
                 else Render();
@@ -233,7 +233,7 @@ public partial class WeekView : UserControl
         var point = e.GetPosition(Board);
         if (point.X < WeekGeometry.TimeGutter || point.X >= Board.Width || point.Y < 0 || point.Y > DayHeight) return false;
         time = WeekGeometry.TimeAt(model.WeekStart, point.X - WeekGeometry.TimeGutter, point.Y / hourHeight * WeekGeometry.HourHeight, dayWidth)
-            .AddMinutes(-Math.Floor(drag.GrabOffsetMinutes / 15) * 15);
+            .AddMinutes(-Math.Floor(drag.GrabOffsetMinutes / 30) * 30);
         return true;
     }
     private void CalendarDragOver(object sender, DragEventArgs e)

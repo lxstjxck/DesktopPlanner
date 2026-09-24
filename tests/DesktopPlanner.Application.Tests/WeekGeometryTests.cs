@@ -6,7 +6,7 @@ public sealed class WeekGeometryTests
     [Theory] [InlineData(21, 21)] [InlineData(27, 21)] [InlineData(28, 28)]
     public void WeekBeginsOnMonday(int day, int expected)
         => Assert.Equal(new DateTime(2026, 9, expected), WeekGeometry.Monday(new DateTime(2026, 9, day)));
-    [Theory] [InlineData(0, 0, 0, 0)] [InlineData(150, 557, 1, 555)] [InlineData(699, 1440, 6, 1425)]
+    [Theory] [InlineData(0, 0, 0, 0)] [InlineData(150, 557, 1, 540)] [InlineData(699, 1440, 6, 1410)]
     public void PointerMapsToDayAndSnappedTime(double x, double y, int day, int minute)
     {
         var monday = new DateTime(2026, 9, 21);

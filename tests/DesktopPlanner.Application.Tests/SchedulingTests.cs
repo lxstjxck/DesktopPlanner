@@ -3,8 +3,8 @@ using DesktopPlanner.Domain;
 namespace DesktopPlanner.Application.Tests;
 public sealed class SchedulingTests
 {
-    [Theory] [InlineData(0, 0)] [InlineData(14, 0)] [InlineData(15, 15)] [InlineData(29, 15)] [InlineData(59, 45)]
-    public void SnapsDownToQuarterHour(int minute, int expected)
+    [Theory] [InlineData(0, 0)] [InlineData(14, 0)] [InlineData(15, 0)] [InlineData(29, 0)] [InlineData(59, 30)]
+    public void SnapsDownToHalfHour(int minute, int expected)
     {
         var start = new DateTime(2026, 9, 21, 9, minute, 37, DateTimeKind.Local);
         var snapped = SchedulingService.Snap(start);
@@ -14,8 +14,8 @@ public sealed class SchedulingTests
     {
         var task = new TaskItem { Title = "Plan" };
         var item = SchedulingService.Schedule(task, new DateTime(2026, 9, 21, 23, 59, 0));
-        Assert.Equal(new DateTime(2026, 9, 21, 23, 45, 0), task.ScheduledStart);
-        Assert.Equal(new DateTime(2026, 9, 22, 0, 45, 0), task.ScheduledEnd);
+        Assert.Equal(new DateTime(2026, 9, 21, 23, 30, 0), task.ScheduledStart);
+        Assert.Equal(new DateTime(2026, 9, 22, 0, 30, 0), task.ScheduledEnd);
         Assert.Equal(item.Id, task.CalendarEventId); Assert.Same(task, item.Task); Assert.Equal("Plan", item.Title);
     }
     [Fact] public void ReschedulePreservesLinkedEventId()

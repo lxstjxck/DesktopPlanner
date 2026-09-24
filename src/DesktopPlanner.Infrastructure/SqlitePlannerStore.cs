@@ -66,6 +66,11 @@ public sealed partial class SqlitePlannerStore(string path) : IPlannerStore, IDi
             // Scheduling and order are owned by their dedicated transactional operations.
             current.Title = task.Title; current.IsCompleted = task.IsCompleted;
             current.CompletedAt = task.CompletedAt; current.UpdatedAt = task.UpdatedAt;
+            if (current.CalendarEventId is Guid eventId)
+            {
+                var linkedEvent = await db.Events.FindAsync(eventId);
+                if (linkedEvent is not null) linkedEvent.Title = task.Title;
+            }
         }
         await db.SaveChangesAsync(); return true;
     });
@@ -146,7 +151,7 @@ public sealed partial class SqlitePlannerStore(string path) : IPlannerStore, IDi
             ?? throw new InvalidOperationException("Событие уже удалено.");
         if (item.IsAllDay) throw new InvalidOperationException("Размер события на весь день нельзя менять здесь.");
         EnsureEditable(item);
-        if (end - item.Start < TimeSpan.FromMinutes(15)) throw new ArgumentException("Минимальная длительность — 15 минут.");
+        if (end - item.Start < TimeSpan.FromMinutes(30)) throw new ArgumentException("Минимальная длительность — 30 минут.");
         item.SetPeriod(item.Start, end); UpdateLinkedTask(item);
         await SaveCalendarAsync(db); return true;
     });
@@ -163,6 +168,7 @@ public sealed partial class SqlitePlannerStore(string path) : IPlannerStore, IDi
     private static void UpdateLinkedTask(CalendarEvent item)
     {
         if (item.Task is not { } task) return;
+        task.Title = item.Title;
         task.ScheduledStart = item.Start; task.ScheduledEnd = item.End; task.UpdatedAt = DateTime.UtcNow;
     }
     private static void EnsureEditable(CalendarEvent item)

@@ -19,7 +19,7 @@
    </Grid>
 
   </StackPanel>
-  <TextBlock x:Name="RangeLabel" DockPanel.Dock="Top" Text="Прокрутка — по часам · перенос — шаг 15 минут" FontSize="11" Foreground="#D6E9FF" Margin="2,6,0,6"/>
+  <TextBlock x:Name="RangeLabel" DockPanel.Dock="Top" Text="Прокрутка — по часам · перенос — шаг 30 минут" FontSize="11" Foreground="#D6E9FF" Margin="2,6,0,6"/>
   <TextBlock DockPanel.Dock="Bottom" Text="{Binding Status}" FontSize="10" TextWrapping="Wrap" Opacity="0.8" Margin="0,6,0,0"/>
   <Grid>
   <Grid.ColumnDefinitions><ColumnDefinition Width="34"/><ColumnDefinition Width="*"/><ColumnDefinition Width="34"/></Grid.ColumnDefinitions>

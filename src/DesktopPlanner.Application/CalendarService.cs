@@ -13,8 +13,8 @@ public sealed class CalendarService(IPlannerStore store)
         return title.Length == 0 ? Task.CompletedTask : store.AddInboxAsync(new UnscheduledEvent { Title = title, Description = description.Trim() });
     }
     public Task DeleteInboxAsync(Guid id) => store.DeleteInboxAsync(id);
-    public Task ScheduleAsync(CalendarDrag source, DateTime start) => store.ScheduleAsync(source.Source, source.Id, SchedulingService.Snap(start));
-    public Task ResizeAsync(Guid id, DateTime end) => store.ResizeEventAsync(id, SchedulingService.Snap(end));
+    public Task ScheduleAsync(CalendarDrag source, DateTime start) => store.ScheduleAsync(source.Source, source.Id, SchedulingService.Snap(start, 30));
+    public Task ResizeAsync(Guid id, DateTime end) => store.ResizeEventAsync(id, SchedulingService.Snap(end, 30));
     public Task DeleteEventAsync(Guid id) => store.DeleteEventAsync(id);
     public Task UpdateAsync(Guid id, EventEdit edit) => store.UpdateEventAsync(id, edit);
     public Task SetColorAsync(Guid id, string? colorHex) => store.SetEventColorAsync(id, colorHex);

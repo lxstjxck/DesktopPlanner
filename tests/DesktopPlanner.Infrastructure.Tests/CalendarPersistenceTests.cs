@@ -107,6 +107,24 @@ public sealed class CalendarPersistenceTests : IDisposable
         var saved = (await store.GetTasksAsync()).Single();
         Assert.True(saved.IsCompleted); Assert.NotNull(saved.CalendarEventId); Assert.Equal(DateTime.Today.AddHours(9), saved.ScheduledStart);
     }
+    [Fact] public async Task LinkedTaskAndEventTitlesStaySynchronizedAfterReopen()
+    {
+        Guid eventId;
+        using (var store = NewStore())
+        {
+            await store.InitializeAsync();
+            var task = new TaskItem { Title = "Initial" }; await store.SaveTaskAsync(task);
+            await store.ScheduleAsync(CalendarSource.Task, task.Id, new DateTime(2026, 9, 21, 9, 0, 0));
+            eventId = (await store.GetTasksAsync()).Single().CalendarEventId!.Value;
+            var renamed = (await store.GetTasksAsync()).Single(); renamed.Title = "From task";
+            await store.SaveTaskAsync(renamed);
+            Assert.Equal("From task", (await store.GetEventsAsync(new DateTime(2026, 9, 21), new DateTime(2026, 9, 22))).Single(e => e.Id == eventId).Title);
+            await store.UpdateEventAsync(eventId, new EventEdit("From calendar", "", "", new DateTime(2026, 9, 21, 9, 0, 0), new DateTime(2026, 9, 21, 10, 0, 0), false));
+        }
+        using var reopened = NewStore(); await reopened.InitializeAsync();
+        Assert.Equal("From calendar", (await reopened.GetTasksAsync()).Single().Title);
+        Assert.Equal("From calendar", (await reopened.GetEventsAsync(new DateTime(2026, 9, 21), new DateTime(2026, 9, 22))).Single().Title);
+    }
     [Fact] public async Task LayoutPresetIsAppliedOnceAndPreservesUserVisibility()
     {
         using var store = NewStore(); await store.InitializeAsync();
