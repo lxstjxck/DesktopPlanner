@@ -4,6 +4,7 @@ namespace DesktopPlanner.Application;
 public interface IPlannerStore
 {
     Task InitializeAsync();
+    Task ResetDataAsync();
     Task ApplyLayoutPresetAsync(IReadOnlyList<WidgetLayout> layouts, string version, bool force = false);
     Task<List<UnscheduledEvent>> GetInboxAsync();
     Task AddInboxAsync(UnscheduledEvent item);
@@ -27,21 +28,3 @@ public interface IPlannerStore
     Task SaveLayoutAsync(WidgetLayout layout);
 }
 public sealed record EventEdit(string Title, string Description, string Location, DateTime Start, DateTime End, bool IsAllDay);
-public sealed record RemoteCalendar(string Id, string Name);
-public sealed record CalendarChangeSet(IReadOnlyList<CalendarEvent> Events, IReadOnlyList<string> RemoteIds);
-public interface ICalendarProvider
-{
-    Task<IReadOnlyList<RemoteCalendar>> DiscoverAsync(CalendarAccount account, CancellationToken cancellationToken);
-    Task<CalendarChangeSet> GetChangesAsync(string calendarId, IReadOnlyDictionary<string, string?> knownETags, CancellationToken cancellationToken);
-    Task<CalendarEvent> SaveAsync(CalendarEvent item, string? expectedETag, CancellationToken cancellationToken);
-    Task DeleteAsync(string calendarId, string externalId, string? expectedETag, CancellationToken cancellationToken);
-}
-public interface ICalendarSyncService { Task SyncAsync(CancellationToken cancellationToken); }
-public interface ICredentialStore
-{
-    Task<string?> GetAsync(string key, CancellationToken cancellationToken);
-    Task SetAsync(string key, string secret, CancellationToken cancellationToken);
-    Task DeleteAsync(string key, CancellationToken cancellationToken);
-}
-
-

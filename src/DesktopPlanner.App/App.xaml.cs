@@ -1,4 +1,4 @@
-﻿using System.IO;
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
@@ -19,7 +19,6 @@ public partial class App : System.Windows.Application
     private PlannerViewModel planner = null!;
     private WindowsOverlayService overlay = null!;
     private TrayController? tray;
-    private readonly GlassBackdropService glass = new();
 
 
     private Mutex? instance;
@@ -41,8 +40,6 @@ public partial class App : System.Windows.Application
             var collection = new ServiceCollection();
             collection.AddSingleton(_ => new SqlitePlannerStore(Path.Combine(directory, "planner.db")));
             collection.AddSingleton<IPlannerStore>(s => s.GetRequiredService<SqlitePlannerStore>());
-            collection.AddSingleton<ICredentialStore, WindowsCredentialStore>();
-            collection.AddSingleton<CalendarSyncService>();
             collection.AddSingleton<CalendarService>(); collection.AddSingleton<CalendarViewModel>();
             collection.AddSingleton<PlannerService>(); collection.AddSingleton<PlannerViewModel>(); collection.AddSingleton<WindowsOverlayService>();
             services = collection.BuildServiceProvider();
@@ -51,7 +48,6 @@ public partial class App : System.Windows.Application
             planner = services.GetRequiredService<PlannerViewModel>();
             overlay = services.GetRequiredService<WindowsOverlayService>();
             await planner.LoadAsync();
-            await glass.LoadAsync();
             var monitors = overlay.GetMonitors();
             var primary = monitors.FirstOrDefault(m => m.IsPrimary) ?? monitors.First();
             await store.ApplyLayoutPresetAsync(ReferenceLayout.Create(primary), ReferenceLayout.Version);
@@ -62,7 +58,7 @@ public partial class App : System.Windows.Application
                 try { LayoutRecovery.Recover(layout, monitors); }
                 catch (ArgumentOutOfRangeException ex)
                 { Log.Warning(ex, "Reset invalid layout {Type}", type); layout = new WidgetLayout { WidgetType = type }; LayoutRecovery.Recover(layout, monitors); }
-                var widget = new WidgetWindow(layout, planner, store, overlay, glass);
+                var widget = new WidgetWindow(layout, planner, store, overlay);
                 widget.SaveFailed += ShowSaveError;
                 widgets.Add(widget);
                 // Create the HWND even when hidden, so hotkey and restore operations are consistent.
@@ -75,7 +71,6 @@ public partial class App : System.Windows.Application
                 var calendarWidget = widgets.FirstOrDefault(w => w.Layout.WidgetType == WidgetType.Week);
                 calendarWidget?.SetVisible(true);
             };
-            StartSynchronization();
             overlay.DesktopCoverageChanged += QueueDesktopRefresh;
             overlay.StartDesktopTracking(); QueueDesktopRefresh();
             desktopTimer.Tick += (_, _) => RecoverDesktopHosts(); desktopTimer.Start();
@@ -83,7 +78,6 @@ public partial class App : System.Windows.Application
             noteTimer.Tick += async (_, _) => { noteTimer.Stop(); try { await planner.SaveNoteAsync(); } catch (Exception ex) { ShowSaveError(ex); } };
             overlay.InteractionToggleRequested += ToggleInteraction;
             Microsoft.Win32.SystemEvents.DisplaySettingsChanged += DisplaySettingsChanged;
-            Microsoft.Win32.SystemEvents.UserPreferenceChanged += WallpaperChanged;
             Log.Information("DesktopPlanner started with {Count} widgets", widgets.Count);
             if (e.Args.Contains("--smoke-test"))
             {
@@ -109,6 +103,10 @@ public partial class App : System.Windows.Application
                 await calendar.ScheduleAsync(new CalendarDrag(CalendarSource.Event, taskEventId), calendar.WeekStart.AddHours(10));
                 await calendar.ResizeAsync(taskEventId, calendar.WeekStart.AddHours(11.5));
                 if (!calendar.LastOperationSucceeded || planner.Todo.First(t => t.Id == taskId).ScheduledEnd != calendar.WeekStart.AddHours(11.5)) throw new InvalidOperationException("Linked duration was not saved");
+                await planner.CompleteCommand.ExecuteAsync(planner.Todo.First(t => t.Id == taskId));
+                if (calendar.Events.Any(e => e.Id == taskEventId)) throw new InvalidOperationException("Completed task remained visible in calendar");
+                await planner.RestoreCommand.ExecuteAsync(planner.Completed.First(t => t.Id == taskId));
+                if (!calendar.Events.Any(e => e.Id == taskEventId)) throw new InvalidOperationException("Restored task lost its calendar event");
                 calendar.NewTitle = "Позвонить Ивану"; await calendar.AddInboxCommand.ExecuteAsync(null);
                 var currentWeek = calendar.WeekStart;
                 await calendar.NextWeekCommand.ExecuteAsync(null); await calendar.PreviousWeekCommand.ExecuteAsync(null);
@@ -121,7 +119,7 @@ public partial class App : System.Windows.Application
                     widget.Opacity = 0; widget.Show(); widget.UpdateLayout();
                     await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
                     if (widget.Layout.WidgetType == WidgetType.Week) await SmokeDiagnostics.VerifySmoothScrollAsync(widget);
-                    widget.Hide(); widget.Opacity = Math.Min(.99, widget.Layout.Opacity);
+                    widget.Hide(); widget.Opacity = 1;
                     widget.RefreshGlass();
                     var bitmap = new System.Windows.Media.Imaging.RenderTargetBitmap((int)widget.ActualWidth, (int)widget.ActualHeight, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
                     var content = (FrameworkElement)widget.Content;
@@ -169,7 +167,7 @@ public partial class App : System.Windows.Application
                             shell.MinimizeAll(); await Task.Delay(900);
                             foreach (var widget in widgets) widget.RefreshDesktopVisibility([]);
                             overlay.Place(new WindowInteropHelper(restored).Handle, primary.X, primary.Y);
-                            restored.Opacity = .99; restored.InvalidateVisual(); restored.UpdateLayout();
+                            restored.Opacity = 1; restored.InvalidateVisual(); restored.UpdateLayout();
                             await Task.Delay(300);
                             Log.Information("Native widget state: visible={Visible}, opacity={Opacity}, state={State}, enabled={Enabled}, size={Width}x{Height}", restored.IsVisible, restored.Opacity, restored.WindowState, restored.IsEnabled, restored.ActualWidth, restored.ActualHeight);
                             Log.Information("Uncovered desktop hit: {Hit}", overlay.DesktopHitDiagnostic(new WindowInteropHelper(restored).Handle));
@@ -184,6 +182,17 @@ public partial class App : System.Windows.Application
                     }
                 }
                 ToggleInteraction(); ToggleInteraction();
+                // Exercise reset only against the isolated smoke-test database.
+                noteTimer.Stop();
+                await planner.Calendar.WhenIdleAsync();
+                await planner.ResetDataAsync();
+                foreach (var widget in widgets) ClearTextUndo(widget);
+                if (planner.Todo.Count != 0 || planner.Completed.Count != 0 || planner.NoteText != ""
+                    || planner.Calendar.Events.Count != 0 || planner.Calendar.Inbox.Count != 0)
+                    throw new InvalidOperationException("Reset did not clear every widget");
+                await planner.SaveNoteAsync();
+                if ((await store.GetTasksAsync()).Count != 0 || await store.GetNoteAsync() != "" || await store.UndoCalendarAsync())
+                    throw new InvalidOperationException("Reset data was restored by a pending save or undo");
                 await ExitAsync();
             }
         }
@@ -211,7 +220,7 @@ public partial class App : System.Windows.Application
                     foreach (var widget in widgets) await widget.FlushAsync(); QueueDesktopRefresh();
                 }
                 catch (Exception ex) { ShowSaveError(ex); }
-            }, ExitAsync, OpenSyncSettings, SyncFromTrayAsync, () => services!.GetRequiredService<CalendarSyncService>().Status);
+            }, ResetDataAsync, ExitAsync);
         if (!overlay.RegisterShortcut(source.Handle)) tray.Notify("Ctrl+Shift+Space занято. Переключайте блокировку через трей.");
     }    private nint WindowMessage(nint hwnd, int message, nint wParam, nint lParam, ref bool handled)
     { handled = overlay.ProcessMessage(message, wParam); return 0; }
@@ -226,7 +235,7 @@ public partial class App : System.Windows.Application
                 var widget = widgets[i];
                 if (overlay.IsNativeWindowAlive(new WindowInteropHelper(widget).Handle)) continue;
                 widget.CloseForExit();
-                var replacement = new WidgetWindow(widget.Layout, planner, services.GetRequiredService<IPlannerStore>(), overlay, glass);
+                var replacement = new WidgetWindow(widget.Layout, planner, services.GetRequiredService<IPlannerStore>(), overlay);
                 replacement.SaveFailed += ShowSaveError; widgets[i] = replacement;
                 new WindowInteropHelper(replacement).EnsureHandle(); replacement.SetInteractionLock(interactionLocked);
                 Log.Information("Recreated desktop widget {Type} after losing native host", widget.Layout.WidgetType);
@@ -251,12 +260,7 @@ public partial class App : System.Windows.Application
             catch (Exception ex) { ShowSaveError(ex); }
         }, DispatcherPriority.Normal);
     }
-    private async void WallpaperChanged(object sender, Microsoft.Win32.UserPreferenceChangedEventArgs e)
-    {
-        if (e.Category is not (Microsoft.Win32.UserPreferenceCategory.Desktop or Microsoft.Win32.UserPreferenceCategory.General or Microsoft.Win32.UserPreferenceCategory.VisualStyle)) return;
-        try { await Dispatcher.InvokeAsync(async () => { await glass.LoadAsync(); foreach (var widget in widgets) widget.RefreshGlass(); }).Task.Unwrap(); }
-        catch (Exception ex) { ShowSaveError(ex); }
-    }    private void ToggleInteraction() => SetInteraction(!interactionLocked);
+    private void ToggleInteraction() => SetInteraction(!interactionLocked);
     private void SetInteraction(bool locked)
     {
         interactionLocked = locked;
@@ -267,20 +271,59 @@ public partial class App : System.Windows.Application
     {
         try
         {
-            await Dispatcher.InvokeAsync(async () =>
+            await Dispatcher.InvokeAsync(() =>
             {
-                await glass.LoadAsync();
                 foreach (var widget in widgets) { widget.Recover(); widget.RefreshGlass(); }
                 QueueDesktopRefresh();
-            }).Task.Unwrap();
+            });
         }
         catch (Exception ex) { ShowSaveError(ex); }
     }    private void ShowSaveError(Exception ex)
     { Log.Error(ex, "Save or window operation failed"); tray?.Notify("Ошибка: " + ex.Message + " · повторите сохранение перед выходом."); }
     private bool exitPending;
+    private bool resetPending;
+    private async Task ResetDataAsync()
+    {
+        if (exiting || exitPending || resetPending) return;
+        resetPending = true;
+        var resumeNoteTimer = noteTimer.IsEnabled;
+        try
+        {
+            if (MessageBox.Show("Удалить все задачи, включая выполненные, события календаря, входящие события и заметки?\n\nОтменить сброс нельзя. Расположение и настройки виджетов сохранятся.",
+                "Сбросить все данные", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes) return;
+            noteTimer.Stop();
+            foreach (var widget in widgets) widget.IsEnabled = false;
+            var commands = new[] { planner.AddCommand.ExecutionTask, planner.CompleteCommand.ExecutionTask,
+                planner.RestoreCommand.ExecutionTask, planner.DeleteCommand.ExecutionTask,
+                planner.ShowInCalendarCommand.ExecutionTask, planner.ReorderTask }.OfType<Task>();
+            await Task.WhenAll(commands);
+            await planner.Calendar.WhenIdleAsync();
+            await planner.ResetDataAsync();
+            foreach (var widget in widgets) ClearTextUndo(widget);
+            resumeNoteTimer = false;
+            tray?.Notify("Все данные удалены из виджетов.");
+        }
+        catch (Exception ex) { ShowSaveError(ex); }
+        finally
+        {
+            resetPending = false;
+            foreach (var widget in widgets) widget.IsEnabled = true;
+            if (resumeNoteTimer) noteTimer.Start();
+        }
+    }
+    private static void ClearTextUndo(DependencyObject element)
+    {
+        if (element is System.Windows.Controls.Primitives.TextBoxBase text && text.IsUndoEnabled)
+        {
+            text.SetCurrentValue(System.Windows.Controls.Primitives.TextBoxBase.IsUndoEnabledProperty, false);
+            text.SetCurrentValue(System.Windows.Controls.Primitives.TextBoxBase.IsUndoEnabledProperty, true);
+        }
+        for (var i = 0; i < System.Windows.Media.VisualTreeHelper.GetChildrenCount(element); i++)
+            ClearTextUndo(System.Windows.Media.VisualTreeHelper.GetChild(element, i));
+    }
     private async Task ExitAsync()
     {
-        if (exiting || exitPending) return;
+        if (exiting || exitPending || resetPending) return;
         exitPending = true; noteTimer.Stop();
         foreach (var widget in widgets) widget.IsEnabled = false;
         try
@@ -293,8 +336,6 @@ public partial class App : System.Windows.Application
             await planner.Calendar.WhenIdleAsync();
             await planner.SaveNoteAsync();
             foreach (var widget in widgets) await widget.FlushAsync();
-            syncTimer.Stop(); syncLifetime.Cancel(); syncWindow?.Close();
-            if (syncService is not null) await syncService.WhenIdleAsync();
             exiting = true;
             foreach (var widget in widgets) widget.CloseForExit();
             Shutdown();
@@ -305,9 +346,7 @@ public partial class App : System.Windows.Application
     protected override void OnExit(ExitEventArgs e)
     {
         Microsoft.Win32.SystemEvents.DisplaySettingsChanged -= DisplaySettingsChanged;
-        Microsoft.Win32.SystemEvents.UserPreferenceChanged -= WallpaperChanged;
         source?.RemoveHook(WindowMessage); source?.Dispose(); tray?.Dispose(); noteTimer.Stop(); desktopTimer.Stop();
-        syncTimer.Stop(); syncLifetime.Cancel();
         services?.Dispose(); instance?.Dispose(); Log.CloseAndFlush(); base.OnExit(e);
     }
 }

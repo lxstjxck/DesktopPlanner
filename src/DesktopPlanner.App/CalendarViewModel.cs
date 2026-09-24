@@ -1,4 +1,4 @@
-﻿using System.Globalization;
+using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using DesktopPlanner.Application;
@@ -79,6 +79,12 @@ public sealed class CalendarViewModel : ObservableObject
     });
     public void SetViewport(double hour, bool detailed)
     { ScrollHour = Math.Clamp(hour, 0, 24); DetailedGrid = detailed; viewportDirty = true; }
+    public void ClearAfterReset()
+    {
+        NavigationTarget = null; OnPropertyChanged(nameof(NavigationTarget));
+        NewTitle = ""; NewDescription = ""; Events = []; Inbox = [];
+        LastOperationSucceeded = true; Status = "Все данные удалены";
+    }
     public Task SaveViewportAsync() => Queue(async () =>
     {
         if (!viewportDirty) return;
@@ -102,6 +108,7 @@ public sealed class CalendarViewModel : ObservableObject
         var loadedInbox = await service.GetInboxAsync();
         Events = loadedEvents; Inbox = loadedInbox;
     }
+    public Task RefreshAsync() => Queue(RefreshCoreAsync, false);
     public Task ScheduleAsync(CalendarDrag drag, DateTime start) => Queue(async () =>
     { await service.ScheduleAsync(drag, start); await AfterMutationAsync(); });
     public Task ResizeAsync(Guid id, DateTime end) => Queue(async () =>
@@ -113,7 +120,6 @@ public sealed class CalendarViewModel : ObservableObject
         await RefreshCoreAsync();
         if (CalendarChanged is { } changed) foreach (Func<Task> handler in changed.GetInvocationList()) await handler();
     }
-    public Task RefreshAfterSyncAsync() => Queue(AfterMutationAsync, false);
     private Task Queue(Func<Task> action, bool announce = true)
     {
         var task = RunAsync(action, announce); pending.Add(task);

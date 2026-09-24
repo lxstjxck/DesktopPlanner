@@ -33,14 +33,27 @@ public sealed class PlannerViewModel : ObservableObject
         {
             if (task is null) return;
             var current = (await service.GetTasksAsync()).FirstOrDefault(t => t.Id == task.Id);
-            if (current?.CalendarEventId is null || current.ScheduledStart is null)
+            if (current?.CalendarEventId is null || current.ScheduledStart is null || current.IsCompleted)
             { await RefreshAsync(); Status = "Задача больше не запланирована в календаре"; return; }
             await Calendar.ShowTaskAsync(current);
-        }), task => task?.CalendarEventId is not null && task.ScheduledStart is not null);
+        }), task => task?.CalendarEventId is not null && task.ScheduledStart is not null && !task.IsCompleted);
     }
     public async Task LoadAsync() { NoteText = await service.GetNoteAsync(); await RefreshAsync(); await Calendar.LoadAsync(); loaded = true; }
+    public async Task ResetDataAsync()
+    {
+        // The app disables input and drains pending commands before resetting.
+        await service.ResetDataAsync();
+        loaded = false;
+        try
+        {
+            Todo.Clear(); Completed.Clear(); NewTitle = ""; NoteText = "";
+            Calendar.ClearAfterReset();
+            Status = "Все данные удалены";
+        }
+        finally { loaded = true; }
+    }
     private async Task Mutate(TaskItem? task, Func<TaskItem, Task> operation)
-    { if (task is not null) await Guard(async () => { await operation(task); await RefreshAsync(); }); }
+    { if (task is not null) await Guard(async () => { await operation(task); await RefreshAsync(); await Calendar.RefreshAsync(); }); }
     private async Task Guard(Func<Task> action)
     {
         try { await action(); Status = "Сохранено"; }

@@ -1,4 +1,4 @@
-﻿using System.ComponentModel;
+using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -98,6 +98,11 @@ public partial class WeekView : UserControl
     private void Render()
     {
         if (model is null || Board is null) return;
+        if (model.Events.Count == 0)
+        {
+            selectedEvent = null; appliedNavigation = null;
+            if (EditorOverlay.Visibility == Visibility.Visible) CloseEditor();
+        }
         var width = Math.Max(WeekGeometry.TimeGutter + 7 * 56, Scroller.ViewportWidth);
         if (!double.IsFinite(width)) return;
         hourHeight = detailed ? 76 : Math.Max(14, (Scroller.ViewportHeight - 1) / 24);
@@ -153,9 +158,21 @@ public partial class WeekView : UserControl
         Canvas.SetLeft(block, WeekGeometry.TimeGutter + segment.Day * dayWidth + segment.Column * dayWidth / segment.ColumnCount + 2);
         var content = new Grid(); block.Child = content;
         var label = new TextBlock { Text = $"{item.Start:HH:mm} {item.Title}", TextWrapping = TextWrapping.Wrap, FontSize = detailed ? 12 : 9, Margin = new Thickness(4, 0, 3, 3), Foreground = item.ColorHex is not null && (.2126 * eventColor.R + .7152 * eventColor.G + .0722 * eventColor.B) > 150 ? new SolidColorBrush(Color.FromRgb(18, 28, 43)) : Brushes.White };
-        content.Children.Add(label);
+        var text = new Grid { Margin = new Thickness(0, 0, 0, segment.CanResize ? 6 : 1), IsHitTestVisible = false };
+        text.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        text.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        text.Children.Add(label); content.Children.Add(text);
+        if (!string.IsNullOrWhiteSpace(item.Description))
+        {
+            label.MaxHeight = Math.Max(12, (block.Height - 6) / 2);
+            label.TextTrimming = TextTrimming.CharacterEllipsis;
+            var description = new TextBlock { Text = item.Description.Trim(), TextWrapping = TextWrapping.Wrap,
+                TextTrimming = TextTrimming.CharacterEllipsis, FontSize = detailed ? 11 : 9,
+                Foreground = label.Foreground, Margin = new Thickness(4, 0, 3, 0) };
+            Grid.SetRow(description, 1); text.Children.Add(description);
+        }
         var menu = new ContextMenu();
-        var edit = new MenuItem { Header = item.IsReadOnly ? "Повторы и приглашения — правка в iCloud" : "Редактировать…", IsEnabled = !item.IsReadOnly };
+        var edit = new MenuItem { Header = item.IsReadOnly ? "Повторы и приглашения — только просмотр" : "Редактировать…", IsEnabled = !item.IsReadOnly };
         edit.Click += (_, _) => OpenEditor(item); menu.Items.Add(edit);
         menu.Items.Add(CreateColorMenu(item));
         var delete = new MenuItem { Header = "Удалить событие (задача останется)", IsEnabled = !item.IsReadOnly };

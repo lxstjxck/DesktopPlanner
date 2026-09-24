@@ -1,4 +1,4 @@
-﻿using System.Windows;
+using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
@@ -17,18 +17,17 @@ public partial class WidgetWindow : Window
     private readonly WindowsOverlayService overlay;
     private readonly DispatcherTimer saveTimer = new() { Interval = TimeSpan.FromMilliseconds(500) };
     private bool initialized, closing, desktopSuppressed, refreshingDesktop;
-    private readonly GlassBackdropService glass;
     private nint Handle => new WindowInteropHelper(this).Handle;
     public event Action<Exception>? SaveFailed;
-    public WidgetWindow(WidgetLayout layout, PlannerViewModel vm, IPlannerStore store, WindowsOverlayService overlay, GlassBackdropService glass)
+    public WidgetWindow(WidgetLayout layout, PlannerViewModel vm, IPlannerStore store, WindowsOverlayService overlay)
     {
         InitializeComponent();
-        this.glass = glass; Layout = layout; this.store = store; this.overlay = overlay; DataContext = vm;
+        Layout = layout; this.store = store; this.overlay = overlay; DataContext = vm;
         Title = Heading.Text = layout.WidgetType switch { WidgetType.Todo => "Задачи", WidgetType.Notes => "Заметки", WidgetType.Completed => "Готово", WidgetType.Week => "Неделя", _ => "События" };
         Resources.MergedDictionaries.Add(new ResourceDictionary { Source = new Uri("WidgetContent.xaml", UriKind.Relative) });
         Body.Content = vm; Body.ContentTemplate = (DataTemplate)FindResource(layout.WidgetType.ToString());
         if (layout.WidgetType is WidgetType.Week or WidgetType.Inbox) Footer.Visibility = Visibility.Collapsed;
-        Width = layout.Width; Height = layout.Height; Opacity = layout.Opacity;
+        Width = layout.Width; Height = layout.Height; ApplyBackgroundOpacity();
         ApplyScale();
         SourceInitialized += (_, _) => { overlay.Place(Handle, Layout.X, Layout.Y); initialized = true; RefreshGlass(); };
         LocationChanged += (_, _) => { ScheduleSave(); RefreshGlass(); if (initialized) RefreshDesktopVisibility(overlay.GetDesktopObstructions()); };
@@ -74,15 +73,11 @@ public partial class WidgetWindow : Window
     {
         if (GlassRoot is null) return;
         GlassRoot.Clip = new RectangleGeometry(new Rect(0, 0, Math.Max(0, GlassRoot.ActualWidth), Math.Max(0, GlassRoot.ActualHeight)), 28, 28);
-        if (!initialized || Handle == 0 || WindowState == WindowState.Minimized) return;
-        var position = overlay.GetPosition(Handle); var dpi = VisualTreeHelper.GetDpi(this).DpiScaleX;
-        var centerX = position.X + Width * dpi / 2; var centerY = position.Y + Height * dpi / 2;
-        var backdrop = glass.Backdrops.FirstOrDefault(b => centerX >= b.Bounds.Left && centerX < b.Bounds.Right && centerY >= b.Bounds.Top && centerY < b.Bounds.Bottom);
-        if (backdrop is null) return;
-        Wallpaper.Source = backdrop.Image; Wallpaper.Width = (backdrop.Bounds.Right - backdrop.Bounds.Left) / dpi;
-        Wallpaper.Height = (backdrop.Bounds.Bottom - backdrop.Bounds.Top) / dpi;
-        Canvas.SetLeft(Wallpaper, (backdrop.Bounds.Left - position.X) / dpi - 8);
-        Canvas.SetTop(Wallpaper, (backdrop.Bounds.Top - position.Y) / dpi - 8);
+    }
+    private void ApplyBackgroundOpacity()
+    {
+        BackgroundMaterial.Opacity = Layout.Opacity;
+        BackgroundShadow.Opacity = Layout.Opacity;
     }
     private void GlassPointerMove(object sender, MouseEventArgs e)
     {
@@ -93,7 +88,7 @@ public partial class WidgetWindow : Window
         if (Layout.IsPositionLocked) return;
         Layout.X = preset.X; Layout.Y = preset.Y; Layout.Width = preset.Width; Layout.Height = preset.Height;
         Layout.Scale = preset.Scale; Layout.Opacity = preset.Opacity; Layout.MonitorId = preset.MonitorId;
-        Width = preset.Width; Height = preset.Height; Opacity = preset.Opacity; ApplyScale();
+        Width = preset.Width; Height = preset.Height; ApplyBackgroundOpacity(); ApplyScale();
         overlay.Place(Handle, preset.X, preset.Y); ScheduleSave();
     }
     public void SetInteractionLock(bool locked)
@@ -158,11 +153,11 @@ public partial class WidgetWindow : Window
             item.Click += (_, _) => { Layout.Scale = value; ApplyScale(); ScheduleSave(); }; scale.Items.Add(item);
         }
         menu.Items.Add(scale);
-        var opacity = new MenuItem { Header = "Непрозрачность" };
+        var opacity = new MenuItem { Header = "Непрозрачность фона" };
         foreach (var value in new[] { .4, .6, .8, .94, 1 })
         {
             var item = new MenuItem { Header = $"{value:P0}" };
-            item.Click += (_, _) => { Layout.Opacity = value; Opacity = value; ScheduleSave(); }; opacity.Items.Add(item);
+            item.Click += (_, _) => { Layout.Opacity = value; ApplyBackgroundOpacity(); ScheduleSave(); }; opacity.Items.Add(item);
         }
         menu.Items.Add(opacity); menu.PlacementTarget = (Button)sender; menu.IsOpen = true;
     }

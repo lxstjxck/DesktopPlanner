@@ -3,6 +3,7 @@ namespace DesktopPlanner.Application;
 
 public sealed class PlannerService(IPlannerStore store)
 {
+    public Task ResetDataAsync() => store.ResetDataAsync();
     public Task<List<TaskItem>> GetTasksAsync() => store.GetTasksAsync();
     public async Task AddAsync(string title)
     {

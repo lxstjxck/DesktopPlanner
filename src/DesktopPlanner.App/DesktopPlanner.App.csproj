@@ -15,7 +15,7 @@
     <ApplicationIcon>Assets\DesktopPlanner.ico</ApplicationIcon>
     <Version>0.1.0</Version>
     <Product>DesktopPlanner</Product>
-    <Description>Виджеты рабочего стола и календарь iCloud</Description>
+    <Description>Виджеты рабочего стола и локальный календарь</Description>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />

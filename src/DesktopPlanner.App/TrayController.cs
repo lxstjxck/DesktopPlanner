@@ -12,8 +12,7 @@ internal sealed class TrayController : IDisposable
     private readonly Forms.NotifyIcon icon;
     private readonly Icon calendarIcon = CreateIcon();
     private readonly ContextMenu menu = new() { Placement = PlacementMode.MousePoint };
-    public TrayController(IReadOnlyList<WidgetWindow> widgets, Action toggleLock, Func<bool> isLocked, Action restore, Func<Task> arrange, Func<Task> exit,
-        Action openSync, Func<Task> synchronize, Func<string> syncStatus)
+    public TrayController(IReadOnlyList<WidgetWindow> widgets, Action toggleLock, Func<bool> isLocked, Action restore, Func<Task> arrange, Func<Task> reset, Func<Task> exit)
     {
         menu.Items.Add(new MenuItem { Header = "DesktopPlanner · рабочий стол", IsEnabled = false });
         menu.Items.Add(new Separator());
@@ -60,12 +59,7 @@ internal sealed class TrayController : IDisposable
         };
         menu.Items.Add(startup);
         menu.Items.Add(new Separator());
-        var statusText = new TextBlock { Text = syncStatus(), MaxWidth = 320, TextWrapping = TextWrapping.Wrap, FontSize = 12 };
-        var status = new MenuItem { Header = statusText, IsEnabled = false };
-        menu.Items.Add(status); menu.Opened += (_, _) => statusText.Text = syncStatus();
-        AddAction("Подключение iCloud…", (_, _) => openSync());
-        AddAction("Синхронизировать сейчас", async (_, _) => await synchronize());
-        menu.Items.Add(new Separator());
+        AddAction("Сбросить все данные…", async (_, _) => await reset());
         AddAction("Сохранить и выйти", async (_, _) => await exit());
         icon = new Forms.NotifyIcon { Text = "DesktopPlanner — виджеты рабочего стола", Icon = calendarIcon, Visible = true };
         menu.Opened += (_, _) => { if (PresentationSource.FromVisual(menu) is HwndSource source) SetForegroundWindow(source.Handle); };

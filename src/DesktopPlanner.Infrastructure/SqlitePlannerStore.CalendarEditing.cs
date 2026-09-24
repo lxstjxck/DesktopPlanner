@@ -44,7 +44,7 @@ public sealed partial class SqlitePlannerStore
         item.Title = edit.Title.Trim(); item.Description = edit.Description.Trim(); item.Location = edit.Location.Trim();
         EnsureEditable(item);
         item.IsAllDay = edit.IsAllDay; item.SetPeriod(edit.Start, edit.End);
-        UpdateLinkedTask(item); MarkChanged(item);
+        UpdateLinkedTask(item);
         await SaveCalendarAsync(db); return true;
     });
     public Task<bool> UndoCalendarAsync() => Run(async db =>

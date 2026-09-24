@@ -46,7 +46,9 @@ public sealed class CalendarUndoTests : IDisposable
         var changed = Assert.Single(await store.GetTasksAsync()); changed.Complete(DateTime.UtcNow); changed.Title = "Renamed";
         await store.SaveTaskAsync(changed);
         Assert.True(await store.UndoCalendarAsync());
-        var restored = Assert.Single(await store.GetEventsAsync(DateTime.Today, DateTime.Today.AddDays(1)));
+        Assert.Empty(await store.GetEventsAsync(DateTime.Today, DateTime.Today.AddDays(1)));
+        await using var db = store.CreateContext();
+        var restored = await db.Events.SingleAsync();
         var linked = Assert.Single(await store.GetTasksAsync());
         Assert.Equal(item.Id, restored.Id); Assert.Equal(item.Id, linked.CalendarEventId);
         Assert.True(linked.IsCompleted); Assert.Equal("Renamed", linked.Title); Assert.Equal(restored.End, linked.ScheduledEnd);

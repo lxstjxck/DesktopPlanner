@@ -1,4 +1,4 @@
-﻿using DesktopPlanner.Application;
+using DesktopPlanner.Application;
 using DesktopPlanner.Domain;
 using Microsoft.EntityFrameworkCore;
 
@@ -42,6 +42,17 @@ public sealed partial class SqlitePlannerStore(string path) : IPlannerStore, IDi
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
         await DatabaseMigrator.UpgradeAsync(db, path);
         await db.Database.ExecuteSqlRawAsync("PRAGMA journal_mode=WAL;");
+        return true;
+    });
+    public Task ResetDataAsync() => Run(async db =>
+    {
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        await db.Tasks.ExecuteDeleteAsync();
+        await db.Events.ExecuteDeleteAsync();
+        await db.Set<UnscheduledEvent>().ExecuteDeleteAsync();
+        await db.Notes.ExecuteDeleteAsync();
+        await transaction.CommitAsync();
+        calendarUndo.Clear();
         return true;
     });
     public Task<List<TaskItem>> GetTasksAsync() => Run(db => db.Tasks.AsNoTracking().OrderBy(t => t.Order).ToListAsync());
@@ -95,8 +106,9 @@ public sealed partial class SqlitePlannerStore(string path) : IPlannerStore, IDi
     public Task DeleteInboxAsync(Guid id) => Run(async db => { var item = await db.Set<UnscheduledEvent>().FindAsync(id); if (item is null) return false; db.Remove(item); await SaveCalendarAsync(db); return true; });
     public Task<List<CalendarEvent>> GetEventsAsync(DateTime from, DateTime to) => Run(async db =>
     {
+        // Legacy tombstones must stay hidden even though synchronization no longer runs.
         var items = await db.Events.AsNoTracking().Where(e => ((e.Start < to && e.End > from) || e.IsReadOnly)
-            && e.SyncStatus != SyncStatus.PendingDelete).ToListAsync();
+            && e.SyncStatus != SyncStatus.PendingDelete && (e.Task == null || !e.Task.IsCompleted)).ToListAsync();
         return items.SelectMany(e => CalendarCodec.Visible(e, from, to)).OrderBy(e => e.Start).ToList();
     });
     public Task ScheduleAsync(CalendarSource source, Guid id, DateTime start) => Run(async db =>
@@ -126,7 +138,6 @@ public sealed partial class SqlitePlannerStore(string path) : IPlannerStore, IDi
                 break;
             default: throw new ArgumentOutOfRangeException(nameof(source));
         }
-        MarkChanged(item);
         await SaveCalendarAsync(db); return true;
     });
     public Task ResizeEventAsync(Guid id, DateTime end) => Run(async db =>
@@ -136,7 +147,7 @@ public sealed partial class SqlitePlannerStore(string path) : IPlannerStore, IDi
         if (item.IsAllDay) throw new InvalidOperationException("Размер события на весь день нельзя менять здесь.");
         EnsureEditable(item);
         if (end - item.Start < TimeSpan.FromMinutes(15)) throw new ArgumentException("Минимальная длительность — 15 минут.");
-        item.SetPeriod(item.Start, end); UpdateLinkedTask(item); MarkChanged(item);
+        item.SetPeriod(item.Start, end); UpdateLinkedTask(item);
         await SaveCalendarAsync(db); return true;
     });
     public Task DeleteEventAsync(Guid id) => Run(async db =>
@@ -146,8 +157,7 @@ public sealed partial class SqlitePlannerStore(string path) : IPlannerStore, IDi
         EnsureEditable(item);
         if (item.Task is { } task)
         { task.CalendarEventId = null; task.ScheduledStart = null; task.ScheduledEnd = null; task.UpdatedAt = DateTime.UtcNow; }
-        if (item.ExternalId is null) db.Events.Remove(item);
-        else { item.SyncStatus = SyncStatus.PendingDelete; item.LastModified = DateTime.UtcNow; }
+        db.Events.Remove(item);
         await SaveCalendarAsync(db); return true;
     });
     private static void UpdateLinkedTask(CalendarEvent item)
@@ -155,8 +165,11 @@ public sealed partial class SqlitePlannerStore(string path) : IPlannerStore, IDi
         if (item.Task is not { } task) return;
         task.ScheduledStart = item.Start; task.ScheduledEnd = item.End; task.UpdatedAt = DateTime.UtcNow;
     }
-    private static void MarkChanged(CalendarEvent item)
-    { if (item.SyncStatus == SyncStatus.Synced) item.SyncStatus = SyncStatus.PendingUpload; }
+    private static void EnsureEditable(CalendarEvent item)
+    {
+        if (item.IsReadOnly) throw new InvalidOperationException("Редактирование повторов и приглашений пока не поддерживается.");
+        if (item.SyncStatus == SyncStatus.PendingDelete) throw new InvalidOperationException("Событие уже удалено.");
+    }
     public Task ApplyLayoutPresetAsync(IReadOnlyList<WidgetLayout> layouts, string version, bool force = false) => Run(async db =>
     {
         var setting = await db.Set<AppSetting>().FindAsync("LayoutPreset");
