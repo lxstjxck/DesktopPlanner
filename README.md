@@ -3,7 +3,11 @@
 Нативные виджеты Windows на .NET 10, WPF, MVVM и SQLite. Реализованы задачи, заметки, недельный календарь, входящие события, управление окнами, миграции базы. Все данные хранятся локально; синхронизации с внешними календарями нет.
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 [![Скачать установщик для Windows x64](https://img.shields.io/badge/Скачать_установщик-Windows_x64-4A90D9?style=for-the-badge&logo=github&logoColor=white)](https://github.com/lxstjxck/DesktopPlanner/releases/latest)
 =======
 [![Скачать установщик для Windows x64](https://img.shields.io/badge/Скачать_установщик-Windows_x64-4A90D9?style=for-the-badge&logo=github&logoColor=white)](https://github.com/lxstjxck/DesktopPlanner/releases/download/0.1.4/DesktopPlanner-Setup-0.1.4-win-x64.exe)
 >>>>>>> 1e7cb1b (Update download link for Windows x64 installer)
+=======
+[![Скачать установщик для Windows x64](https://img.shields.io/badge/Скачать_установщик-Windows_x64-4A90D9?style=for-the-badge&logo=github&logoColor=white)](https://github.com/lxstjxck/DesktopPlanner/releases/latest)
+>>>>>>> 6694db9 (merge)
