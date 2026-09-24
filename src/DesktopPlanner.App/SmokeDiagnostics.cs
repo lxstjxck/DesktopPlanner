@@ -9,6 +9,39 @@ namespace DesktopPlanner.App;
 
 internal static class SmokeDiagnostics
 {
+    public static async Task VerifyResetDialogAsync(Func<Task> reset, Action refreshDesktop, bool confirm)
+    {
+        var ticks = 0;
+        Exception? failure = null;
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(400) };
+        timer.Tick += (_, _) =>
+        {
+            var dialog = System.Windows.Application.Current.Windows.OfType<ResetConfirmationWindow>().SingleOrDefault();
+            try
+            {
+                if (dialog is null || !dialog.IsVisible || !dialog.IsEnabled || dialog.Owner is not null)
+                    throw new InvalidOperationException("Reset dialog disappeared or inherited a desktop owner");
+                refreshDesktop();
+                if (++ticks < 4) return;
+                timer.Stop();
+                if (!confirm) dialog.Close();
+                else
+                {
+                    var panel = (System.Windows.Controls.StackPanel)dialog.Content;
+                    var buttons = panel.Children.OfType<System.Windows.Controls.StackPanel>().Single();
+                    buttons.Children.OfType<System.Windows.Controls.Button>().Single(b => !b.IsCancel)
+                        .RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+                }
+            }
+            catch (Exception ex) { failure = ex; timer.Stop(); dialog?.Close(); }
+        };
+        timer.Start();
+        try { await reset(); }
+        finally { timer.Stop(); }
+        if (failure is not null) throw failure;
+        if (ticks != 4) throw new InvalidOperationException("Reset dialog closed before user action");
+        Serilog.Log.Information("Reset dialog remained visible through desktop refresh; confirmed={Confirmed}", confirm);
+    }
     public static void CaptureDesktop(System.Drawing.Bitmap bitmap, int x, int y)
     {
         using var graphics = System.Drawing.Graphics.FromImage(bitmap);

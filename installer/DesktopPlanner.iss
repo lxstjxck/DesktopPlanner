@@ -1,5 +1,5 @@
 #ifndef AppVersion
-  #define AppVersion "0.1.0"
+  #define AppVersion "0.1.2"
 #endif
 #ifndef PublishDir
   #define PublishDir "..\artifacts\publish\win-x64"
@@ -61,6 +61,10 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 [Run]
 Filename: "{app}\DesktopPlanner.App.exe"; Description: "{cm:LaunchPlanner}"; Flags: nowait postinstall skipifsilent
 
+[UninstallDelete]
+; Fixed application-owned path, independent of the selected installation folder.
+Type: filesandordirs; Name: "{localappdata}\DesktopPlanner"
+
 [Code]
 const RunKey = 'Software\Microsoft\Windows\CurrentVersion\Run';
 
@@ -87,5 +91,5 @@ begin
     if RegQueryStringValue(HKCU, RunKey, 'DesktopPlanner', Existing) then
       if CompareText(Existing, '"' + ExpandConstant('{app}\DesktopPlanner.App.exe') + '"') = 0 then
         RegDeleteValue(HKCU, RunKey, 'DesktopPlanner');
-  { User database, backups and Windows credentials intentionally stay untouched. }
+  { UninstallDelete removes the database, backups and logs; normal upgrades preserve them. }
 end;

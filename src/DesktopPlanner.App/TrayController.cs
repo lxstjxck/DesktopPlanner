@@ -12,7 +12,7 @@ internal sealed class TrayController : IDisposable
     private readonly Forms.NotifyIcon icon;
     private readonly Icon calendarIcon = CreateIcon();
     private readonly ContextMenu menu = new() { Placement = PlacementMode.MousePoint };
-    public TrayController(IReadOnlyList<WidgetWindow> widgets, Action toggleLock, Func<bool> isLocked, Action restore, Func<Task> arrange, Func<Task> reset, Func<Task> exit)
+    public TrayController(IReadOnlyList<WidgetWindow> widgets, Action toggleLock, Func<bool> isLocked, Action restore, Func<Task> arrange, Func<Task> reset, Action openLogs, Func<Task> exit)
     {
         menu.Items.Add(new MenuItem { Header = "DesktopPlanner · рабочий стол", IsEnabled = false });
         menu.Items.Add(new Separator());
@@ -59,7 +59,14 @@ internal sealed class TrayController : IDisposable
         };
         menu.Items.Add(startup);
         menu.Items.Add(new Separator());
-        AddAction("Сбросить все данные…", async (_, _) => await reset());
+        AddAction("Открыть папку логов", (_, _) => openLogs());
+        AddAction("Сбросить все данные…", async (_, _) =>
+        {
+            menu.IsOpen = false;
+            // Let the popup release activation/capture before entering a modal loop.
+            await menu.Dispatcher.InvokeAsync(() => { }, System.Windows.Threading.DispatcherPriority.ContextIdle);
+            await reset();
+        });
         AddAction("Сохранить и выйти", async (_, _) => await exit());
         icon = new Forms.NotifyIcon { Text = "DesktopPlanner — виджеты рабочего стола", Icon = calendarIcon, Visible = true };
         menu.Opened += (_, _) => { if (PresentationSource.FromVisual(menu) is HwndSource source) SetForegroundWindow(source.Handle); };

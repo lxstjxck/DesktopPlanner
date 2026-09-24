@@ -17,6 +17,10 @@ try {
     foreach ($name in @('Todo', 'Week', 'Completed', 'Inbox', 'Notes')) {
         if (-not (Test-Path -LiteralPath (Join-Path $env:DESKTOPPLANNER_DATA_DIR "$name.png"))) { throw "Missing image: $name" }
     }
+    $textLogs = @(Get-ChildItem -LiteralPath (Join-Path $env:DESKTOPPLANNER_DATA_DIR 'logs') -Filter '*.txt')
+    if ($textLogs.Count -eq 0) { throw 'Missing text logs' }
+    $logText = Get-Content -LiteralPath $textLogs[0].FullName -Raw
+    if ($logText -notmatch 'Data reset cancelled' -or $logText -notmatch 'All widget data and undo history cleared') { throw 'Missing reset diagnostics' }
     Write-Output "Smoke passed. Database, logs and window images: $env:DESKTOPPLANNER_DATA_DIR"
 }
 finally {

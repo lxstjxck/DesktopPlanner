@@ -19,6 +19,7 @@ public partial class App : System.Windows.Application
     private PlannerViewModel planner = null!;
     private WindowsOverlayService overlay = null!;
     private TrayController? tray;
+    private string logsDirectory = "";
 
 
     private Mutex? instance;
@@ -36,7 +37,14 @@ public partial class App : System.Windows.Application
             var directory = Environment.GetEnvironmentVariable("DESKTOPPLANNER_DATA_DIR")
                 ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DesktopPlanner");
             Directory.CreateDirectory(directory);
-            Log.Logger = new LoggerConfiguration().WriteTo.File(Path.Combine(directory, "logs", "planner-.log"), rollingInterval: RollingInterval.Day, retainedFileCountLimit: 7).CreateLogger();
+            logsDirectory = Path.Combine(directory, "logs");
+            Directory.CreateDirectory(logsDirectory);
+            Log.Logger = new LoggerConfiguration().WriteTo.File(Path.Combine(logsDirectory, "planner-.txt"),
+                rollingInterval: RollingInterval.Day, retainedFileCountLimit: 14,
+                outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {Message:lj}{NewLine}{Exception}").CreateLogger();
+            DispatcherUnhandledException += (_, args) => { Log.Fatal(args.Exception, "Unhandled UI exception"); Log.CloseAndFlush(); };
+            AppDomain.CurrentDomain.UnhandledException += (_, args) =>
+            { Log.Fatal(args.ExceptionObject as Exception, "Unhandled process exception"); Log.CloseAndFlush(); };
             var collection = new ServiceCollection();
             collection.AddSingleton(_ => new SqlitePlannerStore(Path.Combine(directory, "planner.db")));
             collection.AddSingleton<IPlannerStore>(s => s.GetRequiredService<SqlitePlannerStore>());
@@ -183,10 +191,11 @@ public partial class App : System.Windows.Application
                 }
                 ToggleInteraction(); ToggleInteraction();
                 // Exercise reset only against the isolated smoke-test database.
-                noteTimer.Stop();
-                await planner.Calendar.WhenIdleAsync();
-                await planner.ResetDataAsync();
-                foreach (var widget in widgets) ClearTextUndo(widget);
+                var taskCount = planner.Todo.Count + planner.Completed.Count;
+                await SmokeDiagnostics.VerifyResetDialogAsync(ResetDataAsync, QueueDesktopRefresh, false);
+                if (planner.Todo.Count + planner.Completed.Count != taskCount || (await store.GetTasksAsync()).Count != taskCount)
+                    throw new InvalidOperationException("Cancelling reset changed tasks");
+                await SmokeDiagnostics.VerifyResetDialogAsync(ResetDataAsync, QueueDesktopRefresh, true);
                 if (planner.Todo.Count != 0 || planner.Completed.Count != 0 || planner.NoteText != ""
                     || planner.Calendar.Events.Count != 0 || planner.Calendar.Inbox.Count != 0)
                     throw new InvalidOperationException("Reset did not clear every widget");
@@ -220,7 +229,7 @@ public partial class App : System.Windows.Application
                     foreach (var widget in widgets) await widget.FlushAsync(); QueueDesktopRefresh();
                 }
                 catch (Exception ex) { ShowSaveError(ex); }
-            }, ResetDataAsync, ExitAsync);
+            }, ResetDataAsync, OpenLogs, ExitAsync);
         if (!overlay.RegisterShortcut(source.Handle)) tray.Notify("Ctrl+Shift+Space занято. Переключайте блокировку через трей.");
     }    private nint WindowMessage(nint hwnd, int message, nint wParam, nint lParam, ref bool handled)
     { handled = overlay.ProcessMessage(message, wParam); return 0; }
@@ -281,6 +290,15 @@ public partial class App : System.Windows.Application
     }    private void ShowSaveError(Exception ex)
     { Log.Error(ex, "Save or window operation failed"); tray?.Notify("Ошибка: " + ex.Message + " · повторите сохранение перед выходом."); }
     private bool exitPending;
+    private void OpenLogs()
+    {
+        try
+        {
+            Directory.CreateDirectory(logsDirectory);
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(logsDirectory) { UseShellExecute = true });
+        }
+        catch (Exception ex) { ShowSaveError(ex); }
+    }
     private bool resetPending;
     private async Task ResetDataAsync()
     {
@@ -289,8 +307,10 @@ public partial class App : System.Windows.Application
         var resumeNoteTimer = noteTimer.IsEnabled;
         try
         {
-            if (MessageBox.Show("Удалить все задачи, включая выполненные, события календаря, входящие события и заметки?\n\nОтменить сброс нельзя. Расположение и настройки виджетов сохранятся.",
-                "Сбросить все данные", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes) return;
+            Log.Information("Data reset confirmation opened");
+            if (new ResetConfirmationWindow().ShowDialog() != true)
+            { Log.Information("Data reset cancelled"); return; }
+            Log.Information("Data reset confirmed");
             noteTimer.Stop();
             foreach (var widget in widgets) widget.IsEnabled = false;
             var commands = new[] { planner.AddCommand.ExecutionTask, planner.CompleteCommand.ExecutionTask,
@@ -301,6 +321,7 @@ public partial class App : System.Windows.Application
             await planner.ResetDataAsync();
             foreach (var widget in widgets) ClearTextUndo(widget);
             resumeNoteTimer = false;
+            Log.Information("All widget data and undo history cleared");
             tray?.Notify("Все данные удалены из виджетов.");
         }
         catch (Exception ex) { ShowSaveError(ex); }
