@@ -2,6 +2,8 @@
 
 Нативные виджеты Windows на .NET 10, WPF, MVVM и SQLite. Реализованы задачи, заметки, недельный календарь, входящие события, управление окнами, миграции базы и синхронизация одного календаря iCloud через CalDAV.
 
+[![Скачать установщик для Windows x64](https://img.shields.io/badge/Скачать_установщик-Windows_x64-4A90D9?style=for-the-badge&logo=github&logoColor=white)](https://github.com/lxstjxck/EnhancedToDo/releases/download/v0.1.0/DesktopPlanner-Setup-0.1.0-win-x64.exe)
+
 ## Структура
 
 ```text
