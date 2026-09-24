@@ -1,0 +1,28 @@
+﻿<Window x:Class="DesktopPlanner.App.WidgetWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:p="clr-namespace:System.Windows.Controls.Primitives;assembly=PresentationFramework"
+ Foreground="#F4F7FF" FontFamily="Segoe UI" FontSize="14" WindowStyle="None" AllowsTransparency="True" Background="Transparent" Topmost="False" ShowInTaskbar="False" ShowActivated="False" ResizeMode="NoResize" MinWidth="260" MinHeight="180" MouseMove="GlassPointerMove">
+ <Grid Margin="8">
+  <Border CornerRadius="28" Background="#60304050"><Border.Effect><DropShadowEffect Color="#071325" BlurRadius="16" ShadowDepth="4" Opacity="0.35"/></Border.Effect></Border>
+  <Grid x:Name="GlassRoot" Background="#CE4F657B">
+   <Canvas IsHitTestVisible="False"><Image x:Name="Wallpaper" Stretch="Fill" Opacity="0.94"><Image.Effect><BlurEffect Radius="28" KernelType="Gaussian" RenderingBias="Quality"/></Image.Effect></Image></Canvas>
+   <Border IsHitTestVisible="False"><Border.Background><LinearGradientBrush StartPoint="0,0" EndPoint="0.75,1"><GradientStop Color="#42364759" Offset="0"/><GradientStop Color="#7C253248" Offset="0.6"/><GradientStop Color="#565E7491" Offset="1"/></LinearGradientBrush></Border.Background></Border>
+   <Border IsHitTestVisible="False"><Border.Background><LinearGradientBrush StartPoint="0,0" EndPoint="0.8,1"><GradientStop Color="#42FFFFFF" Offset="0"/><GradientStop Color="#08FFFFFF" Offset="0.24"/><GradientStop Color="#00FFFFFF" Offset="0.65"/><GradientStop Color="#22D3E8FF" Offset="1"/></LinearGradientBrush></Border.Background></Border>
+   <Border IsHitTestVisible="False" Opacity="0.5"><Border.Background><RadialGradientBrush x:Name="Specular" Center="0.25,0" GradientOrigin="0.25,0" RadiusX="0.75" RadiusY="0.6"><GradientStop Color="#38FFFFFF"/><GradientStop Color="#00FFFFFF" Offset="1"/></RadialGradientBrush></Border.Background></Border>
+   <Border CornerRadius="28" BorderThickness="1.2" IsHitTestVisible="False"><Border.BorderBrush><LinearGradientBrush StartPoint="0,0" EndPoint="1,1"><GradientStop Color="#C7FFFFFF"/><GradientStop Color="#20FFFFFF" Offset="0.32"/><GradientStop Color="#08FFFFFF" Offset="0.62"/><GradientStop Color="#6DD2E8FF" Offset="1"/></LinearGradientBrush></Border.BorderBrush></Border>
+   <Border CornerRadius="26" Margin="2" BorderThickness="0.7" BorderBrush="#25FFFFFF" IsHitTestVisible="False"/>
+   <Grid Margin="18,12,18,10">
+    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+    <Grid x:Name="Header" Background="Transparent" MouseLeftButtonDown="MoveWindow">
+     <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+     <TextBlock x:Name="Heading" FontSize="22" FontWeight="SemiBold" VerticalAlignment="Center"/>
+     <Button Grid.Column="1" Content="⚙" Click="OpenSettings" ToolTip="Настройки виджета"/>
+     <Button Grid.Column="2" Content="−" Click="HideWidget" ToolTip="Скрыть; вернуть через трей"/>
+    </Grid>
+    <ContentControl x:Name="Body" Grid.Row="1" Margin="0,10,0,2"/>
+    <TextBlock x:Name="Footer" Grid.Row="2" Text="{Binding Status}" FontSize="10" Opacity="0" TextTrimming="CharacterEllipsis" Margin="0,0,18,0"/>
+    <p:Thumb x:Name="ResizeThumb" Grid.Row="2" Width="17" Height="13" HorizontalAlignment="Right" Cursor="SizeNWSE" DragDelta="ResizeWidget">
+     <p:Thumb.Template><ControlTemplate TargetType="p:Thumb"><Path Data="M 5,12 L 12,5 M 9,12 L 12,9" Stroke="#80FFFFFF" StrokeThickness="1.5"/></ControlTemplate></p:Thumb.Template>
+    </p:Thumb>
+   </Grid>
+  </Grid>
+ </Grid>
+</Window>

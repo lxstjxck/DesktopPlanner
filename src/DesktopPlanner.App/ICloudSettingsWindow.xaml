@@ -1,0 +1,42 @@
+<Window x:Class="DesktopPlanner.App.ICloudSettingsWindow"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ Title="Синхронизация iCloud" Width="560" Height="800" MinWidth="460" MinHeight="480"
+ Foreground="#FAFCFF" FontFamily="Segoe UI" FontSize="14"
+ MaxHeight="{Binding Source={x:Static SystemParameters.WorkArea}, Path=Height}"
+ WindowStyle="None" AllowsTransparency="True" ResizeMode="NoResize"
+ WindowStartupLocation="CenterScreen" Background="Transparent">
+ <Grid Margin="10">
+  <Border CornerRadius="28" Background="#60304050"><Border.Effect><DropShadowEffect Color="#071325" BlurRadius="18" ShadowDepth="4" Opacity=".4"/></Border.Effect></Border>
+  <Grid x:Name="SettingsGlass" Background="#E04F657B">
+   <Canvas IsHitTestVisible="False"><Image x:Name="SettingsWallpaper" Stretch="Fill" Opacity=".85"><Image.Effect><BlurEffect Radius="30" KernelType="Gaussian"/></Image.Effect></Image></Canvas>
+   <Border IsHitTestVisible="False"><Border.Background><LinearGradientBrush StartPoint="0,0" EndPoint=".8,1"><GradientStop Color="#85415267"/><GradientStop Color="#D525364B" Offset=".6"/><GradientStop Color="#C54F6780" Offset="1"/></LinearGradientBrush></Border.Background></Border>
+   <Border IsHitTestVisible="False"><Border.Background><LinearGradientBrush StartPoint="0,0" EndPoint=".7,1"><GradientStop Color="#40FFFFFF"/><GradientStop Color="#00FFFFFF" Offset=".35"/><GradientStop Color="#10D3E8FF" Offset="1"/></LinearGradientBrush></Border.Background></Border>
+   <Grid><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+    <Grid Background="Transparent" MouseLeftButtonDown="MoveSettings" Margin="26,22,20,10">
+     <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+     <StackPanel><TextBlock Text="ПОДКЛЮЧЕНИЯ" FontSize="10" FontWeight="SemiBold" Foreground="#B5D4EF" Margin="0,0,0,6"/><TextBlock Text="Календарь iCloud" FontSize="26" FontWeight="SemiBold"/></StackPanel>
+     <Button Grid.Column="1" Width="32" Height="32" Padding="9" VerticalAlignment="Top" Click="CloseSettings" ToolTip="Закрыть" AutomationProperties.Name="Закрыть подключение iCloud"><Path Data="M 0,0 L 10,10 M 10,0 L 0,10" Stroke="White" StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/></Button>
+    </Grid>
+ <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Margin="0,0,8,12"><StackPanel Margin="26,0,18,16">
+  <TextBlock Text="События на компьютере и устройствах Apple — в одном календаре." TextWrapping="Wrap" Opacity=".8" Margin="0,0,0,18"/>
+  <Border Background="#18FFFFFF" BorderBrush="#28FFFFFF" BorderThickness="1" CornerRadius="12" Padding="12,10" Margin="0,0,0,18"><TextBlock x:Name="ConnectionLabel" TextWrapping="Wrap" FontSize="13"/></Border>
+  <StackPanel x:Name="ConnectionForm">
+   <TextBlock Text="Apple Account (адрес электронной почты)"/><TextBox x:Name="AccountInput" TextChanged="CredentialsChanged" Margin="0,5,0,14"/>
+   <TextBlock Text="Пароль приложения Apple"/>
+   <PasswordBox x:Name="PasswordInput" PasswordChanged="CredentialsChanged" Margin="0,5,0,7" AutomationProperties.Name="Пароль приложения Apple"/>
+   <TextBlock TextWrapping="Wrap" FontSize="12" Opacity=".8"><Hyperlink NavigateUri="https://support.apple.com/ru-ru/102654" RequestNavigate="OpenHelp">Как создать пароль приложения</Hyperlink><LineBreak/>Обычный пароль Apple Account здесь не используется.</TextBlock>
+   <Button Content="Найти календари" Click="Discover" HorizontalAlignment="Left" Margin="0,14,0,16"/>
+   <TextBlock Text="Календарь для синхронизации" Margin="0,0,0,6"/>
+   <ComboBox x:Name="Calendars" DisplayMemberPath="Name" SelectionChanged="CalendarSelected" AutomationProperties.Name="Календарь для синхронизации"/>
+   <TextBlock Text="После подключения события календаря, включая запланированные задачи, будут отправлены в выбранный календарь iCloud. Заметки и списки задач остаются на компьютере." TextWrapping="Wrap" FontSize="12" Opacity=".8" Margin="0,12,0,12"/>
+   <Button x:Name="ConnectButton" Content="Подключить и синхронизировать" Click="Connect" IsEnabled="False" Background="#906496CA" Padding="14,11"/>
+  </StackPanel>
+  <TextBlock x:Name="StatusLabel" TextWrapping="Wrap" Margin="0,16,0,10" FontSize="12" Foreground="#C7E3FF"/>
+  <WrapPanel x:Name="ConnectionActions"><Button Content="Обновить сейчас" Click="SyncNow"/><Button x:Name="DisconnectButton" Content="Отключить iCloud" Click="Disconnect"/></WrapPanel>
+  <TextBlock Text="Автоматическое обновление каждые 2 минуты. Без сети изменения сохраняются локально. Пароль хранится в Диспетчере учётных данных Windows." FontSize="11" TextWrapping="Wrap" Opacity=".65" Margin="0,16,0,0"/>
+ </StackPanel></ScrollViewer>
+   </Grid>
+   <Border CornerRadius="28" BorderThickness="1.2" BorderBrush="{StaticResource GlassEdge}" IsHitTestVisible="False"/>
+  </Grid>
+ </Grid>
+</Window>

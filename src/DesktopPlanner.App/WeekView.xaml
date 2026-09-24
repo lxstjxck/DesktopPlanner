@@ -1,0 +1,46 @@
+﻿<UserControl x:Class="DesktopPlanner.App.WeekView" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:p="clr-namespace:System.Windows.Controls.Primitives;assembly=PresentationFramework">
+ <UserControl.Resources>
+  <Style x:Key="SideArrow" TargetType="Button">
+   <Setter Property="Width" Value="28"/><Setter Property="Height" Value="76"/><Setter Property="Margin" Value="0"/><Setter Property="Cursor" Value="Hand"/>
+   <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
+    <Border x:Name="Shell" CornerRadius="14" Background="#183B5268" BorderBrush="#38FFFFFF" BorderThickness="1"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+    <ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Shell" Property="Background" Value="#557FA1BB"/><Setter TargetName="Shell" Property="BorderBrush" Value="#A0FFFFFF"/></Trigger><Trigger Property="IsPressed" Value="True"><Setter TargetName="Shell" Property="Background" Value="#80608098"/></Trigger><Trigger Property="IsEnabled" Value="False"><Setter TargetName="Shell" Property="Opacity" Value="0.35"/></Trigger></ControlTemplate.Triggers>
+   </ControlTemplate></Setter.Value></Setter>
+  </Style>
+  <Style x:Key="EventResizeGrip" TargetType="p:Thumb"><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="p:Thumb"><Border Background="#708DB4E8" CornerRadius="2" Height="3" Margin="5,0" VerticalAlignment="Center"/></ControlTemplate></Setter.Value></Setter></Style>
+ </UserControl.Resources>
+ <Grid PreviewKeyDown="CalendarKeys">
+ <DockPanel>
+  <StackPanel DockPanel.Dock="Top">
+   <Grid x:Name="Navigation">
+    <Grid.ColumnDefinitions><ColumnDefinition Width="40"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="40"/></Grid.ColumnDefinitions>
+    <TextBlock Grid.Column="1" Text="{Binding WeekLabel}" VerticalAlignment="Center" HorizontalAlignment="Center" FontSize="12" TextTrimming="CharacterEllipsis"/>
+    <StackPanel Grid.Column="2" Orientation="Horizontal"><Button Content="↶" Command="{Binding UndoCommand}" ToolTip="Отменить календарное действие · Ctrl+Z"/><Button x:Name="DensityButton" Content="Сутки" Click="ToggleDensity" ToolTip="Переключить между обзором суток и подробной сеткой"/><Button Content="Сегодня" Click="GoToday"/></StackPanel>
+   </Grid>
+
+  </StackPanel>
+  <TextBlock x:Name="RangeLabel" DockPanel.Dock="Top" Text="Прокрутка — по часам · перенос — шаг 15 минут" FontSize="11" Foreground="#D6E9FF" Margin="2,6,0,6"/>
+  <TextBlock DockPanel.Dock="Bottom" Text="{Binding Status}" FontSize="10" TextWrapping="Wrap" Opacity="0.8" Margin="0,6,0,0"/>
+  <Grid>
+  <Grid.ColumnDefinitions><ColumnDefinition Width="34"/><ColumnDefinition Width="*"/><ColumnDefinition Width="34"/></Grid.ColumnDefinitions>
+  <Button x:Name="PreviousButton" Style="{StaticResource SideArrow}" VerticalAlignment="Center" Click="PreviousWeek" ToolTip="Предыдущая неделя" AutomationProperties.Name="Предыдущая неделя"><Path Data="M 6,0 L 0,6 L 6,12" Stroke="#EDF6FF" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/></Button>
+  <Button x:Name="NextButton" Grid.Column="2" Style="{StaticResource SideArrow}" VerticalAlignment="Center" Click="NextWeek" ToolTip="Следующая неделя" AutomationProperties.Name="Следующая неделя"><Path Data="M 0,0 L 6,6 L 0,12" Stroke="#EDF6FF" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/></Button>
+  <Grid Grid.Column="1" ClipToBounds="True">
+  <DockPanel x:Name="CalendarPage"><DockPanel.RenderTransform><TranslateTransform x:Name="PageShift"/></DockPanel.RenderTransform>
+  <Border x:Name="SwipeHeader" DockPanel.Dock="Top" Height="44" ClipToBounds="True" Background="Transparent" Cursor="ScrollWE" ToolTip="Потяните влево или вправо, чтобы сменить неделю" MouseLeftButtonDown="SwipeStart" MouseMove="SwipeMove" MouseLeftButtonUp="SwipeEnd" LostMouseCapture="SwipeCancel" TouchDown="TouchStart" TouchMove="MoveTouch" TouchUp="TouchEnd"><Canvas x:Name="Days" Height="44"/></Border>
+  <ScrollViewer x:Name="Scroller" ScrollChanged="Scrolled" PreviewMouseWheel="SmoothWheel" PreviewMouseLeftButtonDown="StopSmoothScroll" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" SizeChanged="ViewportChanged">
+   <StackPanel x:Name="Surface" MinWidth="438" HorizontalAlignment="Left">
+    <Canvas x:Name="Board" Focusable="True" Height="1440" Background="Transparent" AllowDrop="True" DragOver="CalendarDragOver" DragLeave="CalendarDragLeave" Drop="CalendarDrop" MouseMove="ShowPointerTime" MouseLeave="ClearPointerTime"/>
+   </StackPanel>
+  </ScrollViewer>
+  </DockPanel>
+  </Grid>
+  </Grid>
+ </DockPanel>
+ <Border x:Name="EditorOverlay" Visibility="Collapsed" Background="#F0223042" CornerRadius="16" BorderThickness="1" BorderBrush="#708BB7DA"><ContentControl x:Name="EditorHost"/></Border>
+ </Grid>
+</UserControl>
+
+
+
+
