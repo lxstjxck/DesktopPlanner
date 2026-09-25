@@ -26,8 +26,8 @@ public interface IPlannerStore
     Task SaveNoteAsync(string text);
     Task<List<WidgetLayout>> GetLayoutsAsync();
     Task SaveLayoutAsync(WidgetLayout layout);
-    Task<List<HabitDayMark>> GetHabitDayMarksAsync(DateTime from, DateTime to);
+    Task<List<HabitDayMark>> GetHabitDayMarksAsync(string trackerId, DateTime from, DateTime to);
     Task SaveHabitDayMarkAsync(HabitDayMark mark);
-    Task DeleteHabitDayMarkAsync(DateTime date);
+    Task DeleteHabitDayMarkAsync(string trackerId, DateTime date);
 }
 public sealed record EventEdit(string Title, string Description, string Location, DateTime Start, DateTime End, bool IsAllDay);

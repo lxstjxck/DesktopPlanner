@@ -68,6 +68,7 @@ public sealed class SyncMetadata
 public sealed class HabitDayMark
 {
     public int Id { get; set; }
+    public string TrackerId { get; set; } = WidgetLayout.DefaultTrackerId;
     public DateTime Date { get; set; }
     public string ColorHex { get; set; } = "";
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;

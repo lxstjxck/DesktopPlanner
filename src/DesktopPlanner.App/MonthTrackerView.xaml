@@ -17,6 +17,6 @@
         </Button>
       </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
     </Grid>
-    <StackPanel Grid.Row="3"><ItemsControl ItemsSource="{Binding Colors}"><ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal" HorizontalAlignment="Center"/></ItemsPanelTemplate></ItemsControl.ItemsPanel><ItemsControl.ItemTemplate><DataTemplate><Button Command="{Binding DataContext.SelectColorCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}" CommandParameter="{Binding Hex}" ToolTip="{Binding Name}" Width="22" Height="22" Padding="0" Margin="3" Background="{Binding Hex}" BorderBrush="#80FFFFFF"/></DataTemplate></ItemsControl.ItemTemplate></ItemsControl><TextBlock Text="{Binding Status}" FontSize="10" Opacity="0.65" HorizontalAlignment="Center"/></StackPanel>
+    <TextBlock Grid.Row="3" Text="{Binding Status}" FontSize="10" Opacity="0.65" HorizontalAlignment="Center"/>
   </Grid>
 </UserControl>

@@ -13,10 +13,12 @@
    <Grid Margin="18,12,18,10">
     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
     <Grid x:Name="Header" Background="Transparent" MouseLeftButtonDown="MoveWindow">
-     <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-     <TextBlock x:Name="Heading" FontSize="22" FontWeight="SemiBold" VerticalAlignment="Center"/>
-     <Button Grid.Column="1" Content="⚙" Click="OpenSettings" ToolTip="Настройки виджета"/>
-     <Button Grid.Column="2" Content="−" Click="HideWidget" ToolTip="Скрыть; вернуть через трей"/>
+     <Grid.ColumnDefinitions><ColumnDefinition Width="24"/><ColumnDefinition/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+     <TextBlock Text="⠿" FontSize="20" Opacity="0.7" VerticalAlignment="Center" HorizontalAlignment="Left" Cursor="SizeAll" ToolTip="Потяните, чтобы переместить виджет"/>
+     <TextBlock x:Name="Heading" Grid.Column="1" FontSize="22" FontWeight="SemiBold" VerticalAlignment="Center"/>
+     <TextBox x:Name="TrackerHeading" Grid.Column="1" FontSize="22" FontWeight="SemiBold" VerticalAlignment="Center" Visibility="Collapsed" Background="Transparent" BorderBrush="#50FFFFFF" Padding="3,0" TextChanged="TrackerNameChanged" LostKeyboardFocus="TrackerNameLostFocus"/>
+     <Button Grid.Column="2" Content="⚙" Click="OpenSettings" ToolTip="Настройки виджета"/>
+     <Button Grid.Column="3" Content="−" Click="HideWidget" ToolTip="Скрыть; вернуть через трей"/>
     </Grid>
     <ContentControl x:Name="Body" Grid.Row="1" Margin="0,10,0,2"/>
     <TextBlock x:Name="Footer" Grid.Row="2" Text="{Binding Status}" FontSize="10" Opacity="0" TextTrimming="CharacterEllipsis" Margin="0,0,18,0"/>

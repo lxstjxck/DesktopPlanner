@@ -4,7 +4,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <!-- The single project version source. Release scripts and installers read this property. -->
-    <DesktopPlannerVersion Condition="'$(DesktopPlannerVersion)' == ''">0.1.4</DesktopPlannerVersion>
+    <DesktopPlannerVersion Condition="'$(DesktopPlannerVersion)' == ''">0.1.5</DesktopPlannerVersion>
     <Version>$(DesktopPlannerVersion)</Version>
     <FileVersion>$(DesktopPlannerVersion)</FileVersion>
     <AssemblyVersion>$(DesktopPlannerVersion).0</AssemblyVersion>

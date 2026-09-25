@@ -12,17 +12,15 @@ internal sealed class TrayController : IDisposable
     private readonly Forms.NotifyIcon icon;
     private readonly Icon calendarIcon = CreateIcon();
     private readonly ContextMenu menu = new() { Placement = PlacementMode.MousePoint };
+    private readonly Separator widgetMenuMarker = new();
+    private readonly List<MenuItem> widgetItems = [];
+    private readonly IReadOnlyList<WidgetWindow> widgets;
     public TrayController(IReadOnlyList<WidgetWindow> widgets, Action toggleLock, Func<bool> isLocked, Action restore, Func<Task> arrange, Func<Task> reset, Action openLogs, Func<Task> exit)
     {
+        this.widgets = widgets;
         menu.Items.Add(new MenuItem { Header = "DesktopPlanner · рабочий стол", IsEnabled = false });
         menu.Items.Add(new Separator());
-        foreach (var widget in widgets)
-        {
-            var item = new MenuItem { Header = widget.Title, IsCheckable = true };
-            item.Click += (_, _) => widget.SetVisible(!widget.Layout.IsVisible);
-            menu.Opened += (_, _) => item.IsChecked = widget.Layout.IsVisible;
-            menu.Items.Add(item);
-        }
+        menu.Items.Add(widgetMenuMarker); RefreshWidgets();
         menu.Items.Add(new Separator());
         var locked = new MenuItem { Header = "Пропускать ввод · Ctrl+Shift+Space", IsCheckable = true };
         locked.Click += (_, _) => toggleLock(); menu.Opened += (_, _) => locked.IsChecked = isLocked(); menu.Items.Add(locked);
@@ -71,6 +69,19 @@ internal sealed class TrayController : IDisposable
         icon = new Forms.NotifyIcon { Text = "DesktopPlanner — виджеты рабочего стола", Icon = calendarIcon, Visible = true };
         menu.Opened += (_, _) => { if (PresentationSource.FromVisual(menu) is HwndSource source) SetForegroundWindow(source.Handle); };
         icon.MouseClick += (_, e) => { if (e.Button is Forms.MouseButtons.Left or Forms.MouseButtons.Right) { menu.IsOpen = false; menu.IsOpen = true; } };
+    }
+    public void RefreshWidgets()
+    {
+        foreach (var item in widgetItems) menu.Items.Remove(item);
+        widgetItems.Clear();
+        var index = menu.Items.IndexOf(widgetMenuMarker);
+        foreach (var widget in widgets)
+        {
+            var item = new MenuItem { Header = widget.Title, IsCheckable = true };
+            item.Click += (_, _) => widget.SetVisible(!widget.Layout.IsVisible);
+            menu.Opened += (_, _) => { item.Header = widget.Title; item.IsChecked = widget.Layout.IsVisible; };
+            menu.Items.Insert(index++, item); widgetItems.Add(item);
+        }
     }
     private MenuItem AddAction(string title, RoutedEventHandler action)
     {

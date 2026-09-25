@@ -16,14 +16,14 @@ public sealed class PlannerDbContext(DbContextOptions<PlannerDbContext> options)
         model.Entity<TaskItem>().HasOne<CalendarEvent>().WithOne(e => e.Task)
             .HasForeignKey<TaskItem>(t => t.CalendarEventId).OnDelete(DeleteBehavior.SetNull);
         model.Entity<TaskItem>().Property(t => t.Title).IsRequired();
-        model.Entity<WidgetLayout>().HasIndex(l => l.WidgetType).IsUnique();
+        model.Entity<WidgetLayout>().HasIndex(l => new { l.WidgetType, l.TrackerId }).IsUnique();
         model.Entity<UnscheduledEvent>();
         model.Entity<CalendarEvent>().HasIndex(e => new { e.Start, e.End });
         model.Entity<CalendarEvent>().HasIndex(e => new { e.CalendarId, e.ExternalId }).IsUnique();
         model.Entity<AppSetting>().HasKey(s => s.Key);
         model.Entity<CalendarAccount>();
         model.Entity<SyncMetadata>().HasOne<CalendarAccount>().WithMany().HasForeignKey(s => s.CalendarAccountId);
-        model.Entity<HabitDayMark>().HasIndex(m => m.Date).IsUnique();
+        model.Entity<HabitDayMark>().HasIndex(m => new { m.TrackerId, m.Date }).IsUnique();
     }
 }
 
@@ -94,29 +94,34 @@ public sealed partial class SqlitePlannerStore(string path) : IPlannerStore, IDi
         await db.SaveChangesAsync(); return true;
     });
     public Task<List<WidgetLayout>> GetLayoutsAsync() => Run(db => db.Layouts.AsNoTracking().ToListAsync());
-    public Task<List<HabitDayMark>> GetHabitDayMarksAsync(DateTime from, DateTime to) =>
-        Run(db => db.HabitDayMarks.AsNoTracking().Where(m => m.Date >= from.Date && m.Date < to.Date).OrderBy(m => m.Date).ToListAsync());
+    public Task<List<HabitDayMark>> GetHabitDayMarksAsync(string trackerId, DateTime from, DateTime to) =>
+        Run(db => db.HabitDayMarks.AsNoTracking().Where(m => m.TrackerId == trackerId && m.Date >= from.Date && m.Date < to.Date).OrderBy(m => m.Date).ToListAsync());
     public Task SaveHabitDayMarkAsync(HabitDayMark mark) => Run(async db =>
     {
         var date = mark.Date.Date;
-        var current = await db.HabitDayMarks.SingleOrDefaultAsync(m => m.Date == date);
-        if (current is null) db.HabitDayMarks.Add(new HabitDayMark { Date = date, ColorHex = mark.ColorHex, UpdatedAt = DateTime.UtcNow });
+        var current = await db.HabitDayMarks.SingleOrDefaultAsync(m => m.TrackerId == mark.TrackerId && m.Date == date);
+        if (current is null) db.HabitDayMarks.Add(new HabitDayMark { TrackerId = mark.TrackerId, Date = date, ColorHex = mark.ColorHex, UpdatedAt = DateTime.UtcNow });
         else { current.ColorHex = mark.ColorHex; current.UpdatedAt = DateTime.UtcNow; }
         await db.SaveChangesAsync(); return true;
     });
-    public Task DeleteHabitDayMarkAsync(DateTime date) => Run(async db =>
-    { await db.HabitDayMarks.Where(m => m.Date == date.Date).ExecuteDeleteAsync(); return true; });
+    public Task DeleteHabitDayMarkAsync(string trackerId, DateTime date) => Run(async db =>
+    { await db.HabitDayMarks.Where(m => m.TrackerId == trackerId && m.Date == date.Date).ExecuteDeleteAsync(); return true; });
     public Task SaveLayoutAsync(WidgetLayout layout)
     {
         layout.Validate();
         // Snapshot now so moving a window cannot mutate an in-flight write.
-        var copy = new WidgetLayout { Id = layout.Id, WidgetType = layout.WidgetType, X = layout.X, Y = layout.Y,
+        var copy = new WidgetLayout { Id = layout.Id, WidgetType = layout.WidgetType, TrackerId = layout.TrackerId, TrackerTitle = layout.TrackerTitle, TrackerColorHex = layout.TrackerColorHex, X = layout.X, Y = layout.Y,
             Width = layout.Width, Height = layout.Height, Scale = layout.Scale, Opacity = layout.Opacity,
             MonitorId = layout.MonitorId, IsVisible = layout.IsVisible, IsPositionLocked = layout.IsPositionLocked };
         return Run(async db =>
         {
-            var current = await db.Layouts.SingleOrDefaultAsync(l => l.WidgetType == copy.WidgetType);
-            if (current is null) { copy.Id = 0; db.Layouts.Add(copy); }
+            var current = await db.Layouts.SingleOrDefaultAsync(l => l.WidgetType == copy.WidgetType && l.TrackerId == copy.TrackerId);
+            if (current is null)
+            {
+                if (copy.WidgetType == WidgetType.MonthTracker && await db.Layouts.CountAsync(l => l.WidgetType == WidgetType.MonthTracker) >= 4)
+                    throw new InvalidOperationException("Можно добавить не более четырёх трекеров.");
+                copy.Id = 0; db.Layouts.Add(copy);
+            }
             else { copy.Id = current.Id; db.Entry(current).CurrentValues.SetValues(copy); }
             await db.SaveChangesAsync(); return true;
         });
@@ -199,7 +204,7 @@ public sealed partial class SqlitePlannerStore(string path) : IPlannerStore, IDi
         foreach (var layout in layouts)
         {
             layout.Validate();
-            var current = await db.Layouts.SingleOrDefaultAsync(l => l.WidgetType == layout.WidgetType);
+            var current = await db.Layouts.SingleOrDefaultAsync(l => l.WidgetType == layout.WidgetType && l.TrackerId == layout.TrackerId);
             if (current is null) { db.Layouts.Add(layout); changed = true; }
             else if (force)
             {

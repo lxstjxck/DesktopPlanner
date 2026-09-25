@@ -4,8 +4,14 @@ public enum WidgetType { Todo, Week, Completed, Inbox, Notes, MonthTracker }
 // X/Y are physical virtual-desktop pixels; Width/Height are WPF device-independent units.
 public sealed class WidgetLayout
 {
+    public const string DefaultTrackerId = "00000000000000000000000000000000";
     public int Id { get; set; }
     public WidgetType WidgetType { get; set; }
+    // These fields are used only by month-tracker widgets. Keeping them with the
+    // widget layout makes a tracker and its independent desktop window one unit.
+    public string TrackerId { get; set; } = "";
+    public string TrackerTitle { get; set; } = "";
+    public string TrackerColorHex { get; set; } = "";
     public double X { get; set; } = 60;
     public double Y { get; set; } = 60;
     public double Width { get; set; } = 340;

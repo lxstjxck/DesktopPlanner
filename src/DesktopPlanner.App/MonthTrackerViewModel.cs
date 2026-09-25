@@ -8,8 +8,6 @@ using DesktopPlanner.Domain;
 
 namespace DesktopPlanner.App;
 
-public sealed record TrackerColor(string Hex, string Name);
-
 public sealed class MonthDay : ObservableObject
 {
     private string? markColor;
@@ -24,15 +22,14 @@ public sealed class MonthDay : ObservableObject
 public sealed class MonthTrackerViewModel : ObservableObject
 {
     private readonly IPlannerStore store;
+    private readonly string trackerId;
     private readonly SemaphoreSlim gate = new(1, 1);
     private DateTime month = new(DateTime.Today.Year, DateTime.Today.Month, 1);
-    private string selectedColorHex = "#5CC8FF";
-    private string status = "Выберите цвет и нажмите на день";
+    private string selectedColorHex;
+    private string status = "Нажмите на день, чтобы поставить или снять отметку";
 
     public ObservableCollection<MonthDay> Days { get; } = [];
     public IReadOnlyList<string> WeekdayNames { get; } = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
-    public IReadOnlyList<TrackerColor> Colors { get; } =
-        [new("#5CC8FF", "Голубой"), new("#7EE2A8", "Зелёный"), new("#FFD166", "Жёлтый"), new("#FF8FA3", "Розовый"), new("#B69CFF", "Фиолетовый"), new("#FF9F5C", "Оранжевый")];
     public DateTime Month { get => month; private set { if (SetProperty(ref month, value)) OnPropertyChanged(nameof(MonthLabel)); } }
     public string MonthLabel => CultureInfo.GetCultureInfo("ru-RU").TextInfo.ToTitleCase(Month.ToString("MMMM yyyy", CultureInfo.GetCultureInfo("ru-RU")));
     public string SelectedColorHex { get => selectedColorHex; private set => SetProperty(ref selectedColorHex, value); }
@@ -40,17 +37,23 @@ public sealed class MonthTrackerViewModel : ObservableObject
     public IAsyncRelayCommand PreviousMonthCommand { get; }
     public IAsyncRelayCommand NextMonthCommand { get; }
     public IAsyncRelayCommand TodayCommand { get; }
-    public IRelayCommand<string> SelectColorCommand { get; }
     public IAsyncRelayCommand<DateTime> ToggleDayCommand { get; }
 
-    public MonthTrackerViewModel(IPlannerStore store)
+    public MonthTrackerViewModel(IPlannerStore store) : this(store, WidgetLayout.DefaultTrackerId, "#5CC8FF") { }
+
+    public MonthTrackerViewModel(IPlannerStore store, string trackerId, string colorHex)
     {
-        this.store = store;
+        this.store = store; this.trackerId = trackerId; selectedColorHex = colorHex;
         PreviousMonthCommand = new AsyncRelayCommand(() => ChangeMonthAsync(-1));
         NextMonthCommand = new AsyncRelayCommand(() => ChangeMonthAsync(1));
         TodayCommand = new AsyncRelayCommand(() => SetMonthAsync(new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1)));
-        SelectColorCommand = new RelayCommand<string>(color => { if (!string.IsNullOrWhiteSpace(color)) SelectedColorHex = color; });
         ToggleDayCommand = new AsyncRelayCommand<DateTime>(ToggleDayAsync);
+    }
+
+    public void SetColor(string colorHex)
+    {
+        if (string.IsNullOrWhiteSpace(colorHex) || !SetProperty(ref selectedColorHex, colorHex)) return;
+        foreach (var day in Days.Where(day => day.MarkColor is not null)) day.MarkColor = colorHex;
     }
 
     public Task LoadAsync() => LoadMonthAsync(Month);
@@ -77,13 +80,13 @@ public sealed class MonthTrackerViewModel : ObservableObject
     {
         Month = new DateTime(value.Year, value.Month, 1);
         var first = Month.AddDays(-(int)(Month.DayOfWeek == DayOfWeek.Sunday ? 6 : Month.DayOfWeek - DayOfWeek.Monday));
-        var marks = await store.GetHabitDayMarksAsync(first, first.AddDays(42));
-        var byDate = marks.ToDictionary(m => m.Date.Date, m => m.ColorHex);
+        var marks = await store.GetHabitDayMarksAsync(trackerId, first, first.AddDays(42));
+        var markedDates = marks.Select(mark => mark.Date.Date).ToHashSet();
         Days.Clear();
         for (var i = 0; i < 42; i++)
         {
             var date = first.AddDays(i);
-            Days.Add(new MonthDay { Date = date, IsInMonth = date.Month == Month.Month, MarkColor = byDate.GetValueOrDefault(date.Date) });
+            Days.Add(new MonthDay { Date = date, IsInMonth = date.Month == Month.Month, MarkColor = markedDates.Contains(date.Date) ? SelectedColorHex : null });
         }
     }
     private async Task ToggleDayAsync(DateTime date)
@@ -92,11 +95,11 @@ public sealed class MonthTrackerViewModel : ObservableObject
         await gate.WaitAsync();
         try
         {
-            var day = Days.First(d => d.Date.Date == date.Date);
-            if (string.Equals(day.MarkColor, SelectedColorHex, StringComparison.OrdinalIgnoreCase))
-            { await store.DeleteHabitDayMarkAsync(date); day.MarkColor = null; Status = "Отметка очищена"; }
+            var day = Days.First(day => day.Date.Date == date.Date);
+            if (day.MarkColor is not null)
+            { await store.DeleteHabitDayMarkAsync(trackerId, date); day.MarkColor = null; Status = "Отметка очищена"; }
             else
-            { await store.SaveHabitDayMarkAsync(new HabitDayMark { Date = date.Date, ColorHex = SelectedColorHex }); day.MarkColor = SelectedColorHex; Status = "Отметка сохранена"; }
+            { await store.SaveHabitDayMarkAsync(new HabitDayMark { TrackerId = trackerId, Date = date.Date, ColorHex = SelectedColorHex }); day.MarkColor = SelectedColorHex; Status = "Отметка сохранена"; }
         }
         catch (Exception ex) { Serilog.Log.Error(ex, "Month tracker mark failed"); Status = "Ошибка сохранения: " + ex.Message; }
         finally { gate.Release(); }

@@ -5,6 +5,7 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
+using Forms = System.Windows.Forms;
 using DesktopPlanner.Application;
 using DesktopPlanner.Domain;
 using DesktopPlanner.Infrastructure;
@@ -15,17 +16,30 @@ public partial class WidgetWindow : Window
     public WidgetLayout Layout { get; }
     private readonly IPlannerStore store;
     private readonly WindowsOverlayService overlay;
+    private readonly MonthTrackerViewModel? monthTracker;
     private readonly DispatcherTimer saveTimer = new() { Interval = TimeSpan.FromMilliseconds(500) };
     private bool initialized, closing, desktopSuppressed, refreshingDesktop;
     private nint Handle => new WindowInteropHelper(this).Handle;
     public event Action<Exception>? SaveFailed;
-    public WidgetWindow(WidgetLayout layout, PlannerViewModel vm, IPlannerStore store, WindowsOverlayService overlay)
+    public event Action? AddTrackerRequested;
+    public WidgetWindow(WidgetLayout layout, PlannerViewModel vm, IPlannerStore store, WindowsOverlayService overlay, MonthTrackerViewModel? monthTracker = null)
     {
         InitializeComponent();
-        Layout = layout; this.store = store; this.overlay = overlay; DataContext = vm;
-        Title = Heading.Text = layout.WidgetType switch { WidgetType.Todo => "Задачи", WidgetType.Notes => "Заметки", WidgetType.Completed => "Готово", WidgetType.Week => "Неделя", WidgetType.MonthTracker => "Трекер", _ => "События" };
+        Layout = layout; this.store = store; this.overlay = overlay; this.monthTracker = monthTracker; DataContext = vm;
+        var title = layout.WidgetType switch { WidgetType.Todo => "Задачи", WidgetType.Notes => "Заметки", WidgetType.Completed => "Готово", WidgetType.Week => "Неделя", WidgetType.MonthTracker => string.IsNullOrWhiteSpace(layout.TrackerTitle) ? "Трекер" : layout.TrackerTitle, _ => "События" };
+        Title = Heading.Text = title;
+        if (layout.WidgetType == WidgetType.MonthTracker)
+        {
+            Layout.TrackerId = string.IsNullOrWhiteSpace(Layout.TrackerId) ? WidgetLayout.DefaultTrackerId : Layout.TrackerId;
+            Layout.TrackerTitle = title;
+            Layout.TrackerColorHex = string.IsNullOrWhiteSpace(Layout.TrackerColorHex) ? "#5CC8FF" : Layout.TrackerColorHex;
+            monthTracker?.SetColor(Layout.TrackerColorHex);
+            TrackerHeading.Text = title; TrackerHeading.Visibility = Visibility.Visible; Heading.Visibility = Visibility.Collapsed;
+        }
         Resources.MergedDictionaries.Add(new ResourceDictionary { Source = new Uri("WidgetContent.xaml", UriKind.Relative) });
-        Body.Content = vm; Body.ContentTemplate = (DataTemplate)FindResource(layout.WidgetType.ToString());
+        if (layout.WidgetType == WidgetType.MonthTracker && monthTracker is not null)
+            Body.Content = new MonthTrackerView { DataContext = monthTracker };
+        else { Body.Content = vm; Body.ContentTemplate = (DataTemplate)FindResource(layout.WidgetType.ToString()); }
         if (layout.WidgetType is WidgetType.Week or WidgetType.Inbox or WidgetType.MonthTracker) Footer.Visibility = Visibility.Collapsed;
         Width = layout.Width; Height = layout.Height; ApplyBackgroundOpacity();
         ApplyScale();
@@ -124,7 +138,7 @@ public partial class WidgetWindow : Window
         if (e.OriginalSource is DependencyObject source)
         {
             for (var current = source; current is not null && current != Header; current = VisualTreeHelper.GetParent(current))
-                if (current is Button) return;
+                if (current is Button or TextBoxBase) return;
         }
         DragMove();
     }
@@ -140,6 +154,18 @@ public partial class WidgetWindow : Window
         ResizeThumb.IsEnabled = !Layout.IsPositionLocked;
     }
     private void HideWidget(object sender, RoutedEventArgs e) => SetVisible(false);
+    private void TrackerNameChanged(object sender, TextChangedEventArgs e)
+    {
+        if (Layout.WidgetType != WidgetType.MonthTracker) return;
+        var title = TrackerHeading.Text.Trim();
+        if (string.IsNullOrWhiteSpace(title)) return;
+        Layout.TrackerTitle = title; Title = title; ScheduleSave();
+    }
+    private void TrackerNameLostFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        if (Layout.WidgetType != WidgetType.MonthTracker || !string.IsNullOrWhiteSpace(TrackerHeading.Text)) return;
+        TrackerHeading.Text = Layout.TrackerTitle;
+    }
     private void OpenSettings(object sender, RoutedEventArgs e)
     {
         var menu = new ContextMenu();
@@ -159,8 +185,32 @@ public partial class WidgetWindow : Window
             var item = new MenuItem { Header = $"{value:P0}" };
             item.Click += (_, _) => { Layout.Opacity = value; ApplyBackgroundOpacity(); ScheduleSave(); }; opacity.Items.Add(item);
         }
-        menu.Items.Add(opacity); menu.PlacementTarget = (Button)sender; menu.IsOpen = true;
+        menu.Items.Add(opacity);
+        if (Layout.WidgetType == WidgetType.MonthTracker)
+        {
+            var color = new MenuItem { Header = "Цвет трекера…" };
+            color.Click += (_, _) => ChooseTrackerColor();
+            menu.Items.Add(color);
+            var addTracker = new MenuItem { Header = "Добавить трекер" };
+            addTracker.Click += (_, _) => AddTrackerRequested?.Invoke();
+            menu.Items.Add(addTracker);
+        }
+        menu.PlacementTarget = (Button)sender; menu.IsOpen = true;
     }
+    private void ChooseTrackerColor()
+    {
+        if (monthTracker is null) return;
+        try
+        {
+            var color = (Color)ColorConverter.ConvertFromString(Layout.TrackerColorHex);
+            using var picker = new Forms.ColorDialog { FullOpen = true, Color = System.Drawing.Color.FromArgb(color.R, color.G, color.B) };
+            if (picker.ShowDialog(new ColorPickerOwner(Handle)) != Forms.DialogResult.OK) return;
+            Layout.TrackerColorHex = $"#{picker.Color.R:X2}{picker.Color.G:X2}{picker.Color.B:X2}";
+            monthTracker.SetColor(Layout.TrackerColorHex); ScheduleSave();
+        }
+        catch (Exception ex) { SaveFailed?.Invoke(ex); }
+    }
+    private sealed record ColorPickerOwner(nint Handle) : Forms.IWin32Window;
 }
 
 

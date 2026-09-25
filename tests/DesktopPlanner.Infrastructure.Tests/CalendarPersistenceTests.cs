@@ -66,7 +66,7 @@ public sealed class CalendarPersistenceTests : IDisposable
             await db.Database.ExecuteSqlRawAsync("DROP TABLE __EFMigrationsHistory;");
             db.Tasks.Add(new TaskItem { Title = "Preserved", IsCompleted = true });
             db.Notes.Add(new Note { Text = "Existing note" });
-            db.Layouts.Add(new WidgetLayout { WidgetType = WidgetType.Notes, X = -400, IsVisible = false });
+            await db.Database.ExecuteSqlRawAsync("INSERT INTO Layouts (WidgetType, X, Y, Width, Height, Scale, Opacity, MonitorId, IsVisible, IsPositionLocked) VALUES (4, -400, 60, 340, 360, 1, 0.94, '', 0, 0);");
             await db.SaveChangesAsync();
         }
         await store.InitializeAsync();
@@ -75,7 +75,7 @@ public sealed class CalendarPersistenceTests : IDisposable
         var backup = Assert.Single(Directory.GetFiles(directory, "*.backup-*.db"));
         await using (var connection = new SqliteConnection($"Data Source={backup}"))
         { await connection.OpenAsync(); using var command = connection.CreateCommand(); command.CommandText = "SELECT Text FROM Notes"; Assert.Equal("Existing note", await command.ExecuteScalarAsync()); }
-        await using (var db = store.CreateContext()) Assert.Equal(5, (await db.Database.GetAppliedMigrationsAsync()).Count());
+        await using (var db = store.CreateContext()) Assert.Equal(6, (await db.Database.GetAppliedMigrationsAsync()).Count());
         await store.InitializeAsync(); Assert.Single(Directory.GetFiles(directory, "*.backup-*.db"));
     }
     [Fact] public async Task UnknownSchemaIsRejectedWithoutChangingRows()
@@ -94,7 +94,7 @@ public sealed class CalendarPersistenceTests : IDisposable
     {
         using var store = NewStore(); await store.InitializeAsync();
         await using var db = store.CreateContext();
-        Assert.Equal(5, (await db.Database.GetAppliedMigrationsAsync()).Count());
+        Assert.Equal(6, (await db.Database.GetAppliedMigrationsAsync()).Count());
         Assert.Empty(await db.Database.GetPendingMigrationsAsync()); Assert.False(db.Database.HasPendingModelChanges());
     }
     [Fact] public async Task StaleTodoCompletionDoesNotEraseCalendarSchedule()
@@ -148,6 +148,30 @@ public sealed class CalendarPersistenceTests : IDisposable
         var week = layouts.Single(l => l.WidgetType == WidgetType.Week);
         Assert.Equal(777, week.X); Assert.Equal(222, week.Y); Assert.Equal(500, week.Width);
         Assert.Contains(layouts, l => l.WidgetType == WidgetType.MonthTracker);
+    }
+    [Fact] public async Task TrackerLayoutsKeepTheirOwnNamesColorsAndAreLimitedToFour()
+    {
+        using var store = NewStore(); await store.InitializeAsync();
+        for (var i = 0; i < 4; i++)
+            await store.SaveLayoutAsync(new WidgetLayout { WidgetType = WidgetType.MonthTracker, TrackerId = $"tracker-{i}", TrackerTitle = $"Theme {i}", TrackerColorHex = "#5CC8FF" });
+        var trackers = (await store.GetLayoutsAsync()).Where(layout => layout.WidgetType == WidgetType.MonthTracker).OrderBy(layout => layout.TrackerId).ToList();
+        Assert.Equal(4, trackers.Count); Assert.Equal("Theme 2", trackers.Single(layout => layout.TrackerId == "tracker-2").TrackerTitle);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => store.SaveLayoutAsync(new WidgetLayout { WidgetType = WidgetType.MonthTracker, TrackerId = "tracker-4" }));
+    }
+    [Fact] public async Task TrackerMigrationKeepsExistingMarksWithTheOriginalTracker()
+    {
+        Directory.CreateDirectory(directory);
+        using var store = NewStore();
+        await using (var db = store.CreateContext())
+        {
+            await db.GetService<IMigrator>().MigrateAsync("20260924120000_HabitDayMarks");
+            await db.Database.ExecuteSqlRawAsync("INSERT INTO Layouts (WidgetType, X, Y, Width, Height, Scale, Opacity, MonitorId, IsVisible, IsPositionLocked) VALUES (5, 60, 60, 340, 360, 1, 0.94, '', 1, 0);");
+            await db.Database.ExecuteSqlRawAsync("INSERT INTO HabitDayMarks (Date, ColorHex, UpdatedAt) VALUES ('2026-09-12 00:00:00', '#FF8FA3', '2026-09-12 00:00:00');");
+        }
+        await store.InitializeAsync();
+        var tracker = Assert.Single(await store.GetLayoutsAsync(), layout => layout.WidgetType == WidgetType.MonthTracker);
+        Assert.Equal(WidgetLayout.DefaultTrackerId, tracker.TrackerId); Assert.Equal("Трекер", tracker.TrackerTitle); Assert.Equal("#5CC8FF", tracker.TrackerColorHex);
+        Assert.Equal("#FF8FA3", Assert.Single(await store.GetHabitDayMarksAsync(WidgetLayout.DefaultTrackerId, new DateTime(2026, 9, 1), new DateTime(2026, 10, 1))).ColorHex);
     }
     public void Dispose()
     { SqliteConnection.ClearAllPools(); if (Directory.Exists(directory)) Directory.Delete(directory, true); }

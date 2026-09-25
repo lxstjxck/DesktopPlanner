@@ -14,10 +14,12 @@ public partial class App : System.Windows.Application
 {
     private ServiceProvider? services;
     private readonly List<WidgetWindow> widgets = [];
+    private readonly Dictionary<string, MonthTrackerViewModel> trackerModels = [];
     private readonly DispatcherTimer noteTimer = new() { Interval = TimeSpan.FromMilliseconds(600) };
     private readonly DispatcherTimer desktopTimer = new() { Interval = TimeSpan.FromSeconds(3) };
     private PlannerViewModel planner = null!;
     private WindowsOverlayService overlay = null!;
+    private IPlannerStore store = null!;
     private TrayController? tray;
     private string logsDirectory = "";
 
@@ -51,7 +53,7 @@ public partial class App : System.Windows.Application
             collection.AddSingleton<CalendarService>(); collection.AddSingleton<CalendarViewModel>(); collection.AddSingleton<MonthTrackerViewModel>();
             collection.AddSingleton<PlannerService>(); collection.AddSingleton<PlannerViewModel>(); collection.AddSingleton<WindowsOverlayService>();
             services = collection.BuildServiceProvider();
-            var store = services.GetRequiredService<IPlannerStore>();
+            store = services.GetRequiredService<IPlannerStore>();
             await store.InitializeAsync();
             planner = services.GetRequiredService<PlannerViewModel>();
             overlay = services.GetRequiredService<WindowsOverlayService>();
@@ -60,18 +62,22 @@ public partial class App : System.Windows.Application
             var primary = monitors.FirstOrDefault(m => m.IsPrimary) ?? monitors.First();
             await store.ApplyLayoutPresetAsync(ReferenceLayout.Create(primary), ReferenceLayout.Version);
             var layouts = await store.GetLayoutsAsync();
-            foreach (var type in Enum.GetValues<WidgetType>())
+            foreach (var type in Enum.GetValues<WidgetType>().Where(type => type != WidgetType.MonthTracker))
             {
                 var layout = layouts.SingleOrDefault(l => l.WidgetType == type) ?? CreateDefaultLayout(type, monitors);
                 try { LayoutRecovery.Recover(layout, monitors); }
                 catch (ArgumentOutOfRangeException ex)
                 { Log.Warning(ex, "Reset invalid layout {Type}", type); layout = new WidgetLayout { WidgetType = type }; LayoutRecovery.Recover(layout, monitors); }
-                var widget = new WidgetWindow(layout, planner, store, overlay);
-                widget.SaveFailed += ShowSaveError;
-                widgets.Add(widget);
-                // Create the HWND even when hidden, so hotkey and restore operations are consistent.
-                new WindowInteropHelper(widget).EnsureHandle();
-                widget.RefreshDesktopVisibility(overlay.GetDesktopObstructions());
+                CreateWidget(layout, null);
+            }
+            foreach (var layout in layouts.Where(layout => layout.WidgetType == WidgetType.MonthTracker).OrderBy(layout => layout.Id))
+            {
+                var tracker = layout.TrackerId == WidgetLayout.DefaultTrackerId
+                    ? planner.MonthTracker : new MonthTrackerViewModel(store, layout.TrackerId, layout.TrackerColorHex);
+                tracker.SetColor(layout.TrackerColorHex);
+                if (layout.TrackerId != WidgetLayout.DefaultTrackerId) await tracker.LoadAsync();
+                trackerModels[layout.TrackerId] = tracker;
+                CreateWidget(layout, tracker);
             }
             CreateTray();
             planner.Calendar.ShowRequested += () =>
@@ -101,7 +107,7 @@ public partial class App : System.Windows.Application
                 await planner.SaveNoteAsync();
                 var calendar = planner.Calendar;
                 await planner.MonthTracker.ToggleDayCommand.ExecuteAsync(DateTime.Today);
-                if (!(await store.GetHabitDayMarksAsync(DateTime.Today, DateTime.Today.AddDays(1))).Any()) throw new InvalidOperationException("Month tracker mark was not saved");
+                if (!(await store.GetHabitDayMarksAsync(WidgetLayout.DefaultTrackerId, DateTime.Today, DateTime.Today.AddDays(1))).Any()) throw new InvalidOperationException("Month tracker mark was not saved");
                 calendar.NewTitle = "Встреча с дизайнером"; calendar.NewDescription = "Обсудить макеты";
                 await calendar.AddInboxCommand.ExecuteAsync(null);
                 var inboxId = calendar.Inbox.Last().Id;
@@ -200,7 +206,7 @@ public partial class App : System.Windows.Application
                 await SmokeDiagnostics.VerifyResetDialogAsync(ResetDataAsync, QueueDesktopRefresh, true);
                 if (planner.Todo.Count != 0 || planner.Completed.Count != 0 || planner.NoteText != ""
                     || planner.Calendar.Events.Count != 0 || planner.Calendar.Inbox.Count != 0
-                    || (await store.GetHabitDayMarksAsync(DateTime.Today, DateTime.Today.AddDays(1))).Count != 0)
+                    || (await store.GetHabitDayMarksAsync(WidgetLayout.DefaultTrackerId, DateTime.Today, DateTime.Today.AddDays(1))).Count != 0)
                     throw new InvalidOperationException("Reset did not clear every widget");
                 await planner.SaveNoteAsync();
                 if ((await store.GetTasksAsync()).Count != 0 || await store.GetNoteAsync() != "" || await store.UndoCalendarAsync())
@@ -216,6 +222,38 @@ public partial class App : System.Windows.Application
         if (monitor is null) return new WidgetLayout { WidgetType = type };
         return ReferenceLayout.Create(monitor).Single(l => l.WidgetType == type);
     }
+    private void CreateWidget(WidgetLayout layout, MonthTrackerViewModel? tracker)
+    {
+        var widget = new WidgetWindow(layout, planner, store, overlay, tracker);
+        widget.SaveFailed += ShowSaveError;
+        widget.AddTrackerRequested += AddTrackerAsync;
+        widgets.Add(widget);
+        tray?.RefreshWidgets();
+        // Create the HWND even when hidden, so hotkey and restore operations are consistent.
+        new WindowInteropHelper(widget).EnsureHandle();
+        widget.RefreshDesktopVisibility(overlay.GetDesktopObstructions());
+    }
+    private async void AddTrackerAsync()
+    {
+        if (widgets.Count(widget => widget.Layout.WidgetType == WidgetType.MonthTracker) >= 4)
+        { tray?.Notify("Можно добавить не более четырёх трекеров."); return; }
+        try
+        {
+            var monitors = overlay.GetMonitors();
+            var primary = monitors.FirstOrDefault(monitor => monitor.IsPrimary) ?? monitors[0];
+            var layout = CreateDefaultLayout(WidgetType.MonthTracker, monitors);
+            var count = widgets.Count(widget => widget.Layout.WidgetType == WidgetType.MonthTracker);
+            layout.TrackerId = Guid.NewGuid().ToString("N"); layout.TrackerTitle = $"Трекер {count + 1}";
+            layout.TrackerColorHex = new[] { "#7EE2A8", "#FFD166", "#FF8FA3" }[count - 1];
+            layout.X = Math.Min(layout.X + count * 32, primary.X + primary.Width - layout.Width);
+            layout.Y = Math.Min(layout.Y + count * 32, primary.Y + primary.Height - layout.Height);
+            await store.SaveLayoutAsync(layout);
+            var tracker = new MonthTrackerViewModel(store, layout.TrackerId, layout.TrackerColorHex);
+            await tracker.LoadAsync(); trackerModels.Add(layout.TrackerId, tracker);
+            CreateWidget(layout, tracker); QueueDesktopRefresh();
+        }
+        catch (Exception ex) { ShowSaveError(ex); }
+    }
     private void CreateTray()
     {
         source = new HwndSource(new HwndSourceParameters("DesktopPlanner messages") { ParentWindow = new nint(-3), WindowStyle = 0, Width = 0, Height = 0 });
@@ -228,7 +266,8 @@ public partial class App : System.Windows.Application
                 {
                     var monitors = overlay.GetMonitors();
                     var presets = ReferenceLayout.Create(monitors.FirstOrDefault(m => m.IsPrimary) ?? monitors[0]);
-                    foreach (var widget in widgets) widget.ApplyPreset(presets.Single(l => l.WidgetType == widget.Layout.WidgetType));
+                    foreach (var widget in widgets.Where(widget => widget.Layout.WidgetType != WidgetType.MonthTracker || widget.Layout.TrackerId == WidgetLayout.DefaultTrackerId))
+                        widget.ApplyPreset(presets.Single(layout => layout.WidgetType == widget.Layout.WidgetType));
                     foreach (var widget in widgets) await widget.FlushAsync(); QueueDesktopRefresh();
                 }
                 catch (Exception ex) { ShowSaveError(ex); }
@@ -247,8 +286,9 @@ public partial class App : System.Windows.Application
                 var widget = widgets[i];
                 if (overlay.IsNativeWindowAlive(new WindowInteropHelper(widget).Handle)) continue;
                 widget.CloseForExit();
-                var replacement = new WidgetWindow(widget.Layout, planner, services.GetRequiredService<IPlannerStore>(), overlay);
-                replacement.SaveFailed += ShowSaveError; widgets[i] = replacement;
+                trackerModels.TryGetValue(widget.Layout.TrackerId, out var tracker);
+                var replacement = new WidgetWindow(widget.Layout, planner, services.GetRequiredService<IPlannerStore>(), overlay, tracker);
+                replacement.SaveFailed += ShowSaveError; replacement.AddTrackerRequested += AddTrackerAsync; widgets[i] = replacement;
                 new WindowInteropHelper(replacement).EnsureHandle(); replacement.SetInteractionLock(interactionLocked);
                 Log.Information("Recreated desktop widget {Type} after losing native host", widget.Layout.WidgetType);
             }
@@ -322,6 +362,7 @@ public partial class App : System.Windows.Application
             await Task.WhenAll(commands);
             await planner.Calendar.WhenIdleAsync();
             await planner.ResetDataAsync();
+            foreach (var tracker in trackerModels.Values.Where(tracker => tracker != planner.MonthTracker)) tracker.ClearAfterReset();
             foreach (var widget in widgets) ClearTextUndo(widget);
             resumeNoteTimer = false;
             Log.Information("All widget data and undo history cleared");

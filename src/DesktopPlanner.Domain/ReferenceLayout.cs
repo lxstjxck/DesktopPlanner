@@ -21,7 +21,9 @@ public static class ReferenceLayout
         var x = monitor.X + (availableWidth - width) / 2 * monitor.DpiScale;
         var y = monitor.Y + (availableHeight - (top + bottom + gap)) / 2 * monitor.DpiScale;
         WidgetLayout Make(WidgetType type, double dx, double dy, double w, double h) => new()
-        { WidgetType = type, X = x + dx * monitor.DpiScale, Y = y + dy * monitor.DpiScale,
+        { WidgetType = type, TrackerId = type == WidgetType.MonthTracker ? WidgetLayout.DefaultTrackerId : "",
+            TrackerTitle = type == WidgetType.MonthTracker ? "Трекер" : "", TrackerColorHex = type == WidgetType.MonthTracker ? "#5CC8FF" : "",
+            X = x + dx * monitor.DpiScale, Y = y + dy * monitor.DpiScale,
             Width = Math.Max(260, w), Height = h, MonitorId = monitor.Id, Opacity = 1 };
         var trackerX = todoWidth + gap;
         var weekX = trackerX + trackerWidth + gap;
