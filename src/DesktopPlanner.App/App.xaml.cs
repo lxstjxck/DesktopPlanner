@@ -80,13 +80,23 @@ public partial class App : System.Windows.Application
                 CreateWidget(layout, tracker);
             }
             CreateTray();
+#if DEBUG
+            _ = Dispatcher.BeginInvoke(() =>
+            {
+                var handle = widgets[0].Handle;
+                Log.Information("Desktop hierarchy:{NewLine}{Hierarchy}", Environment.NewLine,
+                    overlay.DesktopHierarchyDiagnostic(handle));
+                Log.Information("Desktop hit: {Hit}", overlay.DesktopHitDiagnostic(handle));
+                Log.Information("Desktop render: {Render}", widgets[0].RenderDiagnostic());
+                Log.Information("Desktop content hit: {Hit}", overlay.DesktopHitDiagnostic(widgets[0].ContentHandle));
+            }, DispatcherPriority.ApplicationIdle);
+#endif
             planner.Calendar.ShowRequested += () =>
             {
                 var calendarWidget = widgets.FirstOrDefault(w => w.Layout.WidgetType == WidgetType.Week);
                 calendarWidget?.SetVisible(true);
             };
-            overlay.DesktopCoverageChanged += QueueDesktopRefresh;
-            overlay.StartDesktopTracking(); QueueDesktopRefresh();
+            QueueDesktopRefresh();
             desktopTimer.Tick += (_, _) => RecoverDesktopHosts(); desktopTimer.Start();
             planner.NoteChanged += () => { noteTimer.Stop(); noteTimer.Start(); };
             noteTimer.Tick += async (_, _) => { noteTimer.Stop(); try { await planner.SaveNoteAsync(); } catch (Exception ex) { ShowSaveError(ex); } };
@@ -132,10 +142,11 @@ public partial class App : System.Windows.Application
                 await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
                 foreach (var widget in widgets)
                 {
-                    widget.Opacity = 0; widget.Show(); widget.UpdateLayout();
+                    widget.Measure(new Size(widget.Width, widget.Height));
+                    widget.Arrange(new Rect(0, 0, widget.Width, widget.Height));
+                    widget.UpdateLayout();
                     await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
                     if (widget.Layout.WidgetType == WidgetType.Week) await SmokeDiagnostics.VerifySmoothScrollAsync(widget);
-                    widget.Hide(); widget.Opacity = 1;
                     widget.RefreshGlass();
                     var bitmap = new System.Windows.Media.Imaging.RenderTargetBitmap((int)widget.ActualWidth, (int)widget.ActualHeight, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
                     var content = (FrameworkElement)widget.Content;
@@ -151,44 +162,35 @@ public partial class App : System.Windows.Application
                     hidden.SetVisible(false);
                     await SmokeDiagnostics.RunDesktopProbeAsync((process, phase) =>
                     {
-                        var fixtureBounds = overlay.GetDesktopObstructions(process);
-                        if ((phase < 2) != fixtureBounds.Any()) throw new InvalidOperationException($"Fixture phase {phase}: unexpected desktop coverage");
-                        var obstructions = overlay.GetDesktopObstructions();
                         foreach (var widget in widgets)
                         {
-                            var handle = new WindowInteropHelper(widget).Handle;
-                            var expectedVisible = widget.Layout.IsVisible && !overlay.IsSwitchingWindows && !obstructions.Any(b => overlay.IntersectsWindow(handle, b));
-                            if (widget.IsVisible != expectedVisible || overlay.IsTopmost(handle)) throw new InvalidOperationException($"Desktop policy failed for {widget.Title} in phase {phase}");
+                            var handle = widget.Handle;
+                            if (widget.IsVisible != widget.Layout.IsVisible || !overlay.IsDesktopOwned(handle) || overlay.IsTopmost(handle))
+                                throw new InvalidOperationException($"Desktop hosting failed for {widget.Title} in phase {phase}: visible={widget.IsVisible}, desired={widget.Layout.IsVisible}, owned={overlay.IsDesktopOwned(handle)}, topmost={overlay.IsTopmost(handle)}, {overlay.DesktopHitDiagnostic(handle)}");
                         }
-                        if (Windows.Count != widgets.Count || tray is null) throw new InvalidOperationException("Unexpected settings window or missing tray");
+                        if (Windows.Count != 0 || tray is null) throw new InvalidOperationException("Unexpected settings window or missing tray");
                     });
-                    if (widgets.Any(w => overlay.IsTopmost(new WindowInteropHelper(w).Handle))) throw new InvalidOperationException("Widget became topmost");
+                    if (widgets.Any(w => overlay.IsTopmost(w.Handle))) throw new InvalidOperationException("Widget became topmost");
                     if (hidden.IsVisible || hidden.Layout.IsVisible) throw new InvalidOperationException("Fullscreen restored an intentionally hidden widget");
                     hidden.SetVisible(true);
                     var restored = widgets.Single(w => w.Layout.WidgetType == WidgetType.Todo);
-                    restored.RefreshDesktopVisibility(overlay.GetDesktopObstructions());
-                    overlay.SetWindowSwitching(true);
-                    Log.Information("Desktop hit: {Hit}", overlay.DesktopHitDiagnostic(new WindowInteropHelper(restored).Handle));
-                    foreach (var widget in widgets) widget.RefreshDesktopVisibility([]);
-                    if (widgets.Any(w => w.IsVisible)) throw new InvalidOperationException("Widgets remained visible during window switching");
-                    overlay.SetWindowSwitching(false);
-                    foreach (var widget in widgets) widget.RefreshDesktopVisibility([]);
-                    if (widgets.Any(w => w.IsVisible != w.Layout.IsVisible)) throw new InvalidOperationException("Window switching lost desired visibility");
-                    Log.Information("Native desktop probe passed: desktop visibility, fullscreen/maximized/minimized fixture, switch suppression and tray only");
+                    restored.RefreshDesktopVisibility();
+                    Log.Information("Desktop hit: {Hit}", overlay.DesktopHitDiagnostic(restored.Handle));
+                    Log.Information("Native desktop probe passed: hosted visibility, fullscreen/maximized/minimized fixture and tray only");
                     if (e.Args.Contains("--desktop-input-smoke"))
                     {
                         dynamic shell = Activator.CreateInstance(Type.GetTypeFromProgID("Shell.Application")!)!;
                         try
                         {
                             shell.MinimizeAll(); await Task.Delay(900);
-                            foreach (var widget in widgets) widget.RefreshDesktopVisibility([]);
-                            overlay.Place(new WindowInteropHelper(restored).Handle, primary.X, primary.Y);
+                            foreach (var widget in widgets) widget.RefreshDesktopVisibility();
+                            overlay.Place(restored.Handle, primary.X, primary.Y);
                             restored.Opacity = 1; restored.InvalidateVisual(); restored.UpdateLayout();
                             await Task.Delay(300);
-                            Log.Information("Native widget state: visible={Visible}, opacity={Opacity}, state={State}, enabled={Enabled}, size={Width}x{Height}", restored.IsVisible, restored.Opacity, restored.WindowState, restored.IsEnabled, restored.ActualWidth, restored.ActualHeight);
-                            Log.Information("Uncovered desktop hit: {Hit}", overlay.DesktopHitDiagnostic(new WindowInteropHelper(restored).Handle));
-                            if (!overlay.DesktopReceivesPointer(new WindowInteropHelper(restored).Handle)) throw new InvalidOperationException("Desktop widget is not interactive");
-                            var position = overlay.GetPosition(new WindowInteropHelper(restored).Handle);
+                            Log.Information("Native widget state: visible={Visible}, opacity={Opacity}, enabled={Enabled}, size={Width}x{Height}", restored.IsVisible, restored.Opacity, restored.IsEnabled, restored.ActualWidth, restored.ActualHeight);
+                            Log.Information("Uncovered desktop hit: {Hit}", overlay.DesktopHitDiagnostic(restored.Handle));
+                            if (!overlay.DesktopReceivesPointer(restored.Handle)) throw new InvalidOperationException("Desktop widget is not interactive");
+                            var position = overlay.GetPosition(restored.Handle);
                             using var capture = new System.Drawing.Bitmap((int)restored.Width, (int)restored.Height);
                             SmokeDiagnostics.CaptureDesktop(capture, (int)position.X, (int)position.Y);
                             capture.Save(Path.Combine(directory, "DesktopNative.png"));
@@ -229,9 +231,7 @@ public partial class App : System.Windows.Application
         widget.AddTrackerRequested += AddTrackerAsync;
         widgets.Add(widget);
         tray?.RefreshWidgets();
-        // Create the HWND even when hidden, so hotkey and restore operations are consistent.
-        new WindowInteropHelper(widget).EnsureHandle();
-        widget.RefreshDesktopVisibility(overlay.GetDesktopObstructions());
+        widget.RefreshDesktopVisibility();
     }
     private async void AddTrackerAsync()
     {
@@ -281,17 +281,7 @@ public partial class App : System.Windows.Application
         if (exiting || services is null) return;
         try
         {
-            for (var i = 0; i < widgets.Count; i++)
-            {
-                var widget = widgets[i];
-                if (overlay.IsNativeWindowAlive(new WindowInteropHelper(widget).Handle)) continue;
-                widget.CloseForExit();
-                trackerModels.TryGetValue(widget.Layout.TrackerId, out var tracker);
-                var replacement = new WidgetWindow(widget.Layout, planner, services.GetRequiredService<IPlannerStore>(), overlay, tracker);
-                replacement.SaveFailed += ShowSaveError; replacement.AddTrackerRequested += AddTrackerAsync; widgets[i] = replacement;
-                new WindowInteropHelper(replacement).EnsureHandle(); replacement.SetInteractionLock(interactionLocked);
-                Log.Information("Recreated desktop widget {Type} after losing native host", widget.Layout.WidgetType);
-            }
+            foreach (var widget in widgets) widget.RefreshDesktopVisibility();
             QueueDesktopRefresh();
         }
         catch (Exception ex) { Log.Warning(ex, "Desktop host recovery will retry"); }
@@ -306,8 +296,7 @@ public partial class App : System.Windows.Application
             if (exiting) return;
             try
             {
-                var obstructions = overlay.GetDesktopObstructions();
-                foreach (var widget in widgets) widget.RefreshDesktopVisibility(obstructions);
+                foreach (var widget in widgets) widget.RefreshDesktopVisibility();
             }
             catch (Exception ex) { ShowSaveError(ex); }
         }, DispatcherPriority.Normal);

@@ -1,5 +1,5 @@
-﻿<Window x:Class="DesktopPlanner.App.WidgetWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:p="clr-namespace:System.Windows.Controls.Primitives;assembly=PresentationFramework"
- Foreground="#F4F7FF" FontFamily="Segoe UI" FontSize="14" WindowStyle="None" AllowsTransparency="True" Background="Transparent" Topmost="False" ShowInTaskbar="False" ShowActivated="False" ResizeMode="NoResize" MinWidth="260" MinHeight="180" MouseMove="GlassPointerMove">
+<UserControl x:Class="DesktopPlanner.App.WidgetWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:p="clr-namespace:System.Windows.Controls.Primitives;assembly=PresentationFramework"
+ Foreground="#F4F7FF" FontFamily="Segoe UI" FontSize="14" Background="Transparent" MinWidth="260" MinHeight="180" MouseMove="GlassPointerMove">
  <Grid Margin="8">
   <Border x:Name="BackgroundShadow" CornerRadius="28" Background="#60304050" IsHitTestVisible="False"><Border.Effect><DropShadowEffect Color="#071325" BlurRadius="16" ShadowDepth="4" Opacity="0.35"/></Border.Effect></Border>
   <Grid x:Name="GlassRoot" Background="Transparent">
@@ -28,4 +28,4 @@
    </Grid>
   </Grid>
  </Grid>
-</Window>
+</UserControl>

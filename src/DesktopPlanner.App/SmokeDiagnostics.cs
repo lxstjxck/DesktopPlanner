@@ -59,12 +59,16 @@ internal static class SmokeDiagnostics
         {
             keybd_event(0x12, 0, 0, 0); keybd_event(9, 0, 0, 0); keybd_event(9, 0, 2, 0);
             await Task.Delay(450);
-            if (!overlay.IsSwitchingWindows || widgets.Any(w => w.IsVisible)) throw new InvalidOperationException("Held Alt+Tab did not hide widgets");
+            if (widgets.Any(w => w.IsVisible != w.Layout.IsVisible ||
+                !overlay.IsDesktopOwned(w.Handle) ||
+                !overlay.IsToolWindow(w.Handle) ||
+                overlay.IsTopmost(w.Handle)))
+                throw new InvalidOperationException("Alt+Tab changed desktop widget visibility or topmost state");
         }
         finally { keybd_event(9, 0, 2, 0); keybd_event(0x12, 0, 2, 0); SetForegroundWindow(foreground); }
         await Task.Delay(350);
-        if (overlay.IsSwitchingWindows || widgets.Any(w => w.IsVisible != w.Layout.IsVisible)) throw new InvalidOperationException("Widgets failed to return after Alt+Tab");
-        Serilog.Log.Information("Real Alt+Tab probe passed: hidden while held, restored after release");
+        if (widgets.Any(w => w.IsVisible != w.Layout.IsVisible)) throw new InvalidOperationException("Alt+Tab changed desired visibility");
+        Serilog.Log.Information("Real Alt+Tab probe passed: desktop widgets retained visibility");
     }
     [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern void keybd_event(byte key, byte scan, uint flags, nuint extra);
     [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern nint GetForegroundWindow();

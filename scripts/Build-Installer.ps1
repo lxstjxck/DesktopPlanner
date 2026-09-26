@@ -9,7 +9,7 @@ $propsPath = Join-Path $root 'Directory.Build.props'
 if (!(Test-Path -LiteralPath $propsPath)) { throw "Version source not found: $propsPath" }
 if (!$Version) {
     [xml]$props = Get-Content -LiteralPath $propsPath -Raw
-    $Version = [string]($props.Project.PropertyGroup.DesktopPlannerVersion | Select-Object -First 1)
+    $Version = [string]($props.Project.PropertyGroup.DesktopPlannerVersion | Select-Object -First 1).InnerText
 }
 if ($Version -notmatch '^\d+\.\d+\.\d+$') { throw "Invalid DesktopPlanner version '$Version'. Expected major.minor.patch." }
 $publish = Join-Path $root 'artifacts/publish/win-x64'

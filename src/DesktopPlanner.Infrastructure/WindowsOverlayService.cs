@@ -28,14 +28,16 @@ public sealed partial class WindowsOverlayService : IDisposable
         var result = IntPtr.Size == 8 ? SetWindowLongPtr(handle, -20, (nint)next) : (nint)SetWindowLong(handle, -20, (int)next);
         if (result == 0 && Marshal.GetLastPInvokeError() != 0) throw new Win32Exception();
         if (!EnableWindow(handle, !locked)) { /* Return value is previous enabled state, not success. */ }
-        if (!SetWindowPos(handle, IsDesktopChild(handle) ? 0 : new nint(-2), 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0010 | 0x0020)) throw new Win32Exception();
+        if (!SetWindowPos(handle, IsDesktopChild(handle) ? 0 : new nint(-2), 0, 0, 0, 0,
+            0x0001 | 0x0002 | 0x0010 | 0x0020 | (IsDesktopOwned(handle) ? 0x0004u : 0u))) throw new Win32Exception();
     }
     public void Place(nint handle, double x, double y)
     {
         var point = new NativePoint { X = (int)Math.Round(x), Y = (int)Math.Round(y) };
         var attached = IsDesktopChild(handle);
         if (attached) ScreenToClient(DesktopParent, ref point);
-        if (!SetWindowPos(handle, attached ? 0 : new nint(-2), point.X, point.Y, 0, 0, 0x0001 | 0x0010)) throw new Win32Exception();
+        if (!SetWindowPos(handle, attached ? 0 : new nint(-2), point.X, point.Y, 0, 0,
+            0x0001 | 0x0010 | (IsDesktopOwned(handle) ? 0x0004u : 0u))) throw new Win32Exception();
     }
     public (double X, double Y, string MonitorId) GetPosition(nint handle)
     {
@@ -61,7 +63,7 @@ public sealed partial class WindowsOverlayService : IDisposable
         return result;
     }
     private static nint GetStyle(nint h) => IntPtr.Size == 8 ? GetWindowLongPtr(h, -20) : GetWindowLong(h, -20);
-    public void Dispose() { StopDesktopTracking(); RestoreDesktopRegion(); if (hotkeyWindow != 0) UnregisterHotKey(hotkeyWindow, 1); hotkeyWindow = 0; }
+    public void Dispose() { RestoreDesktopRegion(); if (hotkeyWindow != 0) UnregisterHotKey(hotkeyWindow, 1); hotkeyWindow = 0; }
     [StructLayout(LayoutKind.Sequential)] private struct Rect { public int Left, Top, Right, Bottom; }
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)] private struct MonitorInfo
     { public int Size; public Rect Monitor, Work; public uint Flags; [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string Device; }

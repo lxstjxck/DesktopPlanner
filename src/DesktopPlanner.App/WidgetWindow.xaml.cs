@@ -11,15 +11,22 @@ using DesktopPlanner.Domain;
 using DesktopPlanner.Infrastructure;
 namespace DesktopPlanner.App;
 
-public partial class WidgetWindow : Window
+public partial class WidgetWindow : UserControl
 {
     public WidgetLayout Layout { get; }
     private readonly IPlannerStore store;
     private readonly WindowsOverlayService overlay;
     private readonly MonthTrackerViewModel? monthTracker;
     private readonly DispatcherTimer saveTimer = new() { Interval = TimeSpan.FromMilliseconds(500) };
-    private bool initialized, closing, desktopSuppressed, refreshingDesktop;
-    private nint Handle => new WindowInteropHelper(this).Handle;
+    private bool initialized, closing, refreshingDesktop, interactionLocked;
+    private HwndSource? contentSource;
+    private nint hostWindow;
+    private bool desktopVisible, dragging;
+    private System.Drawing.Point dragStart;
+    private (double X, double Y) dragPosition;
+    public nint Handle => hostWindow;
+    public new bool IsVisible => desktopVisible;
+    public string Title { get; private set; } = "";
     public event Action<Exception>? SaveFailed;
     public event Action? AddTrackerRequested;
     public WidgetWindow(WidgetLayout layout, PlannerViewModel vm, IPlannerStore store, WindowsOverlayService overlay, MonthTrackerViewModel? monthTracker = null)
@@ -43,11 +50,20 @@ public partial class WidgetWindow : Window
         if (layout.WidgetType is WidgetType.Week or WidgetType.Inbox or WidgetType.MonthTracker) Footer.Visibility = Visibility.Collapsed;
         Width = layout.Width; Height = layout.Height; ApplyBackgroundOpacity();
         ApplyScale();
-        SourceInitialized += (_, _) => { overlay.Place(Handle, Layout.X, Layout.Y); initialized = true; RefreshGlass(); };
-        LocationChanged += (_, _) => { ScheduleSave(); RefreshGlass(); if (initialized) RefreshDesktopVisibility(overlay.GetDesktopObstructions()); };
-        SizeChanged += (_, _) => { ScheduleSave(); RefreshGlass(); };
+        SizeChanged += (_, _) =>
+        {
+            if (Handle != 0)
+            {
+                var dpi = VisualTreeHelper.GetDpi(this);
+                var width = (int)Math.Ceiling(ActualWidth * dpi.DpiScaleX);
+                var height = (int)Math.Ceiling(ActualHeight * dpi.DpiScaleY);
+                overlay.ResizeDesktopWidget(Handle, width, height);
+            }
+            ScheduleSave(); RefreshGlass();
+        };
         saveTimer.Tick += async (_, _) => { saveTimer.Stop(); try { await FlushAsync(); } catch (Exception ex) { SaveFailed?.Invoke(ex); } };
-        Closing += (_, e) => { if (!closing) { e.Cancel = true; SetVisible(false); } };
+        PreviewMouseMove += DragWidget;
+        PreviewMouseLeftButtonUp += (_, _) => { if (dragging) { dragging = false; ReleaseMouseCapture(); ScheduleSave(); } };
         PreviewKeyDown += async (_, e) =>
         {
             if (e.Key != Key.Z || Keyboard.Modifiers != ModifierKeys.Control || Keyboard.FocusedElement is TextBoxBase) return;
@@ -59,30 +75,78 @@ public partial class WidgetWindow : Window
     public void SetVisible(bool visible)
     {
         Layout.IsVisible = visible;
-        RefreshDesktopVisibility(overlay.GetDesktopObstructions());
+        RefreshDesktopVisibility();
         ScheduleSave();
     }
-    public void RefreshDesktopVisibility(IReadOnlyList<ScreenRectangle> obstructions)
+    public void RefreshDesktopVisibility()
     {
         if (refreshingDesktop || closing) return;
         refreshingDesktop = true;
         try
         {
-        // WPF Window rendering is not reliable after native reparenting into Explorer.
-        // Keep the normal WPF composition path until a dedicated desktop host replaces it.
-        if (WindowState == WindowState.Minimized)
-        {
-            var dpi = VisualTreeHelper.GetDpi(this).DpiScaleX;
-            var stored = new ScreenRectangle(Layout.X, Layout.Y, Layout.X + Layout.Width * dpi, Layout.Y + Layout.Height * dpi);
-            desktopSuppressed = obstructions.Any(bounds => bounds.Intersects(stored));
-        }
-        else desktopSuppressed = obstructions.Any(bounds => overlay.IntersectsWindow(Handle, bounds));
-        desktopSuppressed |= overlay.IsSwitchingWindows;
-        if (Layout.IsVisible && !desktopSuppressed) { if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal; if (!IsVisible) Show(); }
-        else if (IsVisible) Hide();
+            if (contentSource is not null && (!overlay.IsNativeWindowAlive(Handle) || !overlay.IsDesktopOwned(Handle)))
+                ReleaseHost();
+            if (!Layout.IsVisible || !overlay.CanHostDesktopWidget())
+            {
+                Hide();
+                return;
+            }
+            if (contentSource is null) CreateHost();
+            Show();
         }
         finally { refreshingDesktop = false; }
     }
+    private void CreateHost()
+    {
+        var parent = overlay.GetDesktopParent();
+        if (parent == 0) return;
+        var monitor = overlay.GetMonitors().FirstOrDefault(area => area.Id == Layout.MonitorId);
+        var scale = monitor?.DpiScale ?? 1;
+        var physicalWidth = (int)Math.Ceiling(Width * scale);
+        var physicalHeight = (int)Math.Ceiling(Height * scale);
+        var parameters = new HwndSourceParameters("DesktopPlannerWidget", physicalWidth, physicalHeight)
+        {
+            ParentWindow = parent,
+            WindowStyle = unchecked((int)0x80000000), // WS_POPUP; Explorer owns its Z-order group.
+            ExtendedWindowStyle = 0x00000080, // WS_EX_TOOLWINDOW.
+            UsesPerPixelOpacity = true
+        };
+        parameters.SetPosition((int)Math.Round(Layout.X), (int)Math.Round(Layout.Y));
+        contentSource = new HwndSource(parameters);
+        contentSource.CompositionTarget.BackgroundColor = Colors.Transparent;
+        contentSource.RootVisual = this;
+        hostWindow = contentSource.Handle;
+        overlay.PlaceDesktopOwned(Handle, Layout.X, Layout.Y);
+        overlay.PositionDesktopOwned(Handle);
+        if (interactionLocked) SetInteractionLock(true);
+        initialized = true;
+        RefreshGlass();
+    }
+    private void ReleaseHost()
+    {
+        desktopVisible = false;
+        if (contentSource is not null)
+        {
+            contentSource.RootVisual = null;
+            contentSource.Dispose();
+            contentSource = null;
+        }
+        hostWindow = 0;
+    }
+    public void Show()
+    {
+        if (Handle == 0 || !overlay.IsDesktopOwned(Handle)) return;
+        overlay.SetDesktopWidgetVisible(Handle, true);
+        desktopVisible = true;
+    }
+    public void Hide()
+    {
+        overlay.SetDesktopWidgetVisible(Handle, false);
+        desktopVisible = false;
+    }
+    public string RenderDiagnostic() => $"nativeHost={Handle}, content={contentSource?.Handle}, rootVisible={base.IsVisible}, " +
+        $"contentVisible={contentSource?.RootVisual is UIElement element && element.IsVisible}, size={ActualWidth}x{ActualHeight}, source={PresentationSource.FromVisual(this) is not null}";
+    public nint ContentHandle => contentSource?.Handle ?? 0;
     public void RefreshGlass()
     {
         if (GlassRoot is null) return;
@@ -103,10 +167,16 @@ public partial class WidgetWindow : Window
         Layout.X = preset.X; Layout.Y = preset.Y; Layout.Width = preset.Width; Layout.Height = preset.Height;
         Layout.Scale = preset.Scale; Layout.Opacity = preset.Opacity; Layout.MonitorId = preset.MonitorId;
         Width = preset.Width; Height = preset.Height; ApplyBackgroundOpacity(); ApplyScale();
-        overlay.Place(Handle, preset.X, preset.Y); ScheduleSave();
+        if (Handle != 0) overlay.Place(Handle, preset.X, preset.Y);
+        ScheduleSave();
     }
     public void SetInteractionLock(bool locked)
-    { if (Handle != 0) { if (locked) Keyboard.ClearFocus(); overlay.SetInteractionLock(Handle, locked); } }
+    {
+        interactionLocked = locked;
+        if (Handle == 0) return;
+        if (locked) Keyboard.ClearFocus();
+        overlay.SetInteractionLock(Handle, locked);
+    }
     public void SetPositionLocked(bool locked)
     {
         Layout.IsPositionLocked = locked;
@@ -119,11 +189,11 @@ public partial class WidgetWindow : Window
         if (Handle != 0) overlay.Place(Handle, Layout.X, Layout.Y);
         ScheduleSave();
     }
-    private void ScheduleSave() { if (!initialized || closing || WindowState == WindowState.Minimized) return; saveTimer.Stop(); saveTimer.Start(); }
+    private void ScheduleSave() { if (!initialized || closing) return; saveTimer.Stop(); saveTimer.Start(); }
     public async Task FlushAsync()
     {
         saveTimer.Stop();
-        if (Handle != 0 && initialized && overlay.IsNativeWindowAlive(Handle) && WindowState != WindowState.Minimized)
+        if (Handle != 0 && initialized && overlay.IsNativeWindowAlive(Handle))
         {
             var position = overlay.GetPosition(Handle);
             Layout.X = position.X; Layout.Y = position.Y; Layout.MonitorId = position.MonitorId;
@@ -131,7 +201,7 @@ public partial class WidgetWindow : Window
         }
         await store.SaveLayoutAsync(Layout);
     }
-    public void CloseForExit() { saveTimer.Stop(); closing = true; Close(); }
+    public void CloseForExit() { saveTimer.Stop(); closing = true; ReleaseHost(); }
     private void MoveWindow(object sender, MouseButtonEventArgs e)
     {
         if (Layout.IsPositionLocked || e.ChangedButton != MouseButton.Left) return;
@@ -140,7 +210,20 @@ public partial class WidgetWindow : Window
             for (var current = source; current is not null && current != Header; current = VisualTreeHelper.GetParent(current))
                 if (current is Button or TextBoxBase) return;
         }
-        DragMove();
+        if (Handle == 0) return;
+        dragging = true;
+        dragStart = Forms.Cursor.Position;
+        var position = overlay.GetPosition(Handle);
+        dragPosition = (position.X, position.Y);
+        CaptureMouse();
+        e.Handled = true;
+    }
+    private void DragWidget(object sender, MouseEventArgs e)
+    {
+        if (!dragging || Handle == 0 || e.LeftButton != MouseButtonState.Pressed) return;
+        var pointer = Forms.Cursor.Position;
+        overlay.Place(Handle, dragPosition.X + pointer.X - dragStart.X, dragPosition.Y + pointer.Y - dragStart.Y);
+        ScheduleSave();
     }
     private void ResizeWidget(object sender, DragDeltaEventArgs e)
     {
