@@ -5,6 +5,8 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
+using System.ComponentModel;
+using Serilog;
 using Forms = System.Windows.Forms;
 using DesktopPlanner.Application;
 using DesktopPlanner.Domain;
@@ -21,7 +23,7 @@ public partial class WidgetWindow : UserControl
     private bool initialized, closing, refreshingDesktop, interactionLocked;
     private HwndSource? contentSource;
     private nint hostWindow;
-    private bool desktopVisible, dragging;
+    private bool desktopVisible, dragging, desktopPositionPending, desktopPositionWarningLogged;
     private System.Drawing.Point dragStart;
     private (double X, double Y) dragPosition;
     public nint Handle => hostWindow;
@@ -92,6 +94,7 @@ public partial class WidgetWindow : UserControl
                 return;
             }
             if (contentSource is null) CreateHost();
+            else if (desktopPositionPending) PositionDesktopHost();
             Show();
         }
         finally { refreshingDesktop = false; }
@@ -117,14 +120,33 @@ public partial class WidgetWindow : UserControl
         contentSource.RootVisual = this;
         hostWindow = contentSource.Handle;
         overlay.PlaceDesktopOwned(Handle, Layout.X, Layout.Y);
-        overlay.PositionDesktopOwned(Handle);
+        desktopPositionPending = true;
+        PositionDesktopHost();
         if (interactionLocked) SetInteractionLock(true);
         initialized = true;
         RefreshGlass();
     }
+    private void PositionDesktopHost()
+    {
+        try
+        {
+            overlay.PositionDesktopOwned(Handle);
+            desktopPositionPending = false;
+            if (desktopPositionWarningLogged) Log.Information("Desktop widget position recovered for {Widget}", Layout.WidgetType);
+            desktopPositionWarningLogged = false;
+        }
+        catch (Win32Exception ex) when (ex.NativeErrorCode == 5)
+        {
+            // Explorer can reject z-order changes while its desktop is starting or restarting.
+            if (!desktopPositionWarningLogged) Log.Warning(ex, "Desktop widget position will retry for {Widget}", Layout.WidgetType);
+            desktopPositionWarningLogged = true;
+        }
+    }
     private void ReleaseHost()
     {
         desktopVisible = false;
+        desktopPositionPending = false;
+        desktopPositionWarningLogged = false;
         if (contentSource is not null)
         {
             contentSource.RootVisual = null;

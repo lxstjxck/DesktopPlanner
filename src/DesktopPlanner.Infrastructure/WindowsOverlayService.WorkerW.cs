@@ -49,7 +49,8 @@ public sealed partial class WindowsOverlayService
     public void PositionDesktopOwned(nint window)
     {
         var aboveDesktop = GetWindow(DesktopParent, 3);
-        if (aboveDesktop == 0 || !SetWindowPos(window, aboveDesktop, 0, 0, 0, 0,
+        // No preceding window is valid: zero is also HWND_TOP for SetWindowPos.
+        if (!SetWindowPos(window, aboveDesktop, 0, 0, 0, 0,
             0x0001 | 0x0002 | 0x0010)) throw new Win32Exception();
     }
     public bool CanHostDesktopWidget()
