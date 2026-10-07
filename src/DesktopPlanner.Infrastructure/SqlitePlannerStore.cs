@@ -126,6 +126,22 @@ public sealed partial class SqlitePlannerStore(string path) : IPlannerStore, IDi
             await db.SaveChangesAsync(); return true;
         });
     }
+    public Task<bool> DeleteTrackerAsync(string trackerId)
+    {
+        if (string.IsNullOrWhiteSpace(trackerId) || trackerId == WidgetLayout.DefaultTrackerId)
+            throw new InvalidOperationException("Основной трекер нельзя удалить.");
+        return Run(async db =>
+        {
+            await using var transaction = await db.Database.BeginTransactionAsync();
+            var layout = await db.Layouts.SingleOrDefaultAsync(l => l.WidgetType == WidgetType.MonthTracker && l.TrackerId == trackerId);
+            if (layout is null) return false;
+            db.Layouts.Remove(layout);
+            await db.HabitDayMarks.Where(mark => mark.TrackerId == trackerId).ExecuteDeleteAsync();
+            await db.SaveChangesAsync();
+            await transaction.CommitAsync();
+            return true;
+        });
+    }
     public Task<List<UnscheduledEvent>> GetInboxAsync() => Run(db => db.Set<UnscheduledEvent>().AsNoTracking().OrderBy(e => e.CreatedAt).ToListAsync());
     public Task AddInboxAsync(UnscheduledEvent item) => Run(async db => { db.Add(item); await SaveCalendarAsync(db); return true; });
     public Task DeleteInboxAsync(Guid id) => Run(async db => { var item = await db.Set<UnscheduledEvent>().FindAsync(id); if (item is null) return false; db.Remove(item); await SaveCalendarAsync(db); return true; });

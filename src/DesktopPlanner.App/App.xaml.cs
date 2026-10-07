@@ -243,8 +243,10 @@ public partial class App : System.Windows.Application
             var primary = monitors.FirstOrDefault(monitor => monitor.IsPrimary) ?? monitors[0];
             var layout = CreateDefaultLayout(WidgetType.MonthTracker, monitors);
             var count = widgets.Count(widget => widget.Layout.WidgetType == WidgetType.MonthTracker);
-            layout.TrackerId = Guid.NewGuid().ToString("N"); layout.TrackerTitle = $"Трекер {count + 1}";
-            layout.TrackerColorHex = new[] { "#7EE2A8", "#FFD166", "#FF8FA3" }[count - 1];
+            var slot = Enumerable.Range(2, 3).FirstOrDefault(number => !widgets.Any(widget => widget.Layout.WidgetType == WidgetType.MonthTracker && widget.Title == $"Трекер {number}"));
+            if (slot == 0) slot = count + 1;
+            layout.TrackerId = Guid.NewGuid().ToString("N"); layout.TrackerTitle = $"Трекер {slot}";
+            layout.TrackerColorHex = new[] { "#7EE2A8", "#FFD166", "#FF8FA3" }[slot - 2];
             layout.X = Math.Min(layout.X + count * 32, primary.X + primary.Width - layout.Width);
             layout.Y = Math.Min(layout.Y + count * 32, primary.Y + primary.Height - layout.Height);
             await store.SaveLayoutAsync(layout);
@@ -253,6 +255,24 @@ public partial class App : System.Windows.Application
             CreateWidget(layout, tracker); QueueDesktopRefresh();
         }
         catch (Exception ex) { ShowSaveError(ex); }
+    }
+    private async Task DeleteTrackerAsync(WidgetWindow widget)
+    {
+        var id = widget.Layout.TrackerId;
+        if (exiting || exitPending || resetPending || !widgets.Contains(widget) || widget.Layout.WidgetType != WidgetType.MonthTracker || id == WidgetLayout.DefaultTrackerId) return;
+        widget.PrepareForRemoval();
+        try
+        {
+            await widget.FlushAsync();
+            if (trackerModels.TryGetValue(id, out var tracker)) await tracker.WhenIdleAsync();
+            await store.DeleteTrackerAsync(id);
+            widget.CloseForExit();
+            widgets.Remove(widget);
+            trackerModels.Remove(id);
+            tray?.RefreshWidgets();
+            QueueDesktopRefresh();
+        }
+        catch (Exception ex) { widget.CancelRemoval(); ShowSaveError(ex); }
     }
     private void CreateTray()
     {
@@ -271,7 +291,7 @@ public partial class App : System.Windows.Application
                     foreach (var widget in widgets) await widget.FlushAsync(); QueueDesktopRefresh();
                 }
                 catch (Exception ex) { ShowSaveError(ex); }
-            }, ResetDataAsync, OpenLogs, ExitAsync);
+            }, DeleteTrackerAsync, ResetDataAsync, OpenLogs, ExitAsync);
         if (!overlay.RegisterShortcut(source.Handle)) tray.Notify("Ctrl+Shift+Space занято. Переключайте блокировку через трей.");
     }    private nint WindowMessage(nint hwnd, int message, nint wParam, nint lParam, ref bool handled)
     { handled = overlay.ProcessMessage(message, wParam); return 0; }

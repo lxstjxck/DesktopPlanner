@@ -22,10 +22,10 @@
     </Grid>
     <ContentControl x:Name="Body" Grid.Row="1" Margin="0,10,0,2"/>
     <TextBlock x:Name="Footer" Grid.Row="2" Text="{Binding Status}" FontSize="10" Opacity="0" TextTrimming="CharacterEllipsis" Margin="0,0,18,0"/>
-    <p:Thumb x:Name="ResizeThumb" Grid.Row="2" Width="17" Height="13" HorizontalAlignment="Right" Cursor="SizeNWSE" DragDelta="ResizeWidget">
-     <p:Thumb.Template><ControlTemplate TargetType="p:Thumb"><Path Data="M 0,7 L 7,0 M 4,7 L 7,4" Width="8" Height="8" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center" Stroke="#80FFFFFF" StrokeThickness="1.5"/></ControlTemplate></p:Thumb.Template>
-    </p:Thumb>
    </Grid>
+   <p:Thumb x:Name="ResizeThumb" Width="24" Height="24" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,16,16" Cursor="SizeNWSE" DragDelta="ResizeWidget">
+    <p:Thumb.Template><ControlTemplate TargetType="p:Thumb"><Grid Background="Transparent"><Path Data="M 0,7 L 7,0 M 4,7 L 7,4" Width="8" Height="8" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center" Stroke="#80FFFFFF" StrokeThickness="1.5"/></Grid></ControlTemplate></p:Thumb.Template>
+   </p:Thumb>
   </Grid>
  </Grid>
 </UserControl>

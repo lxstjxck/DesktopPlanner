@@ -46,6 +46,13 @@ public sealed partial class WindowsOverlayService
         if (!SetWindowPos(window, 0, (int)Math.Round(x), (int)Math.Round(y), 0, 0,
             0x0001 | 0x0004 | 0x0010)) throw new Win32Exception();
     }
+    public void DragDesktopOwned(nint window, int cursorX, int cursorY)
+    {
+        if (!IsDesktopOwned(window)) return;
+        ReleaseCapture();
+        var cursor = (nint)((cursorY << 16) | (cursorX & 0xFFFF));
+        SendMessage(window, 0x00A1, 2, cursor); // WM_NCLBUTTONDOWN, HTCAPTION: native move loop.
+    }
     public void PositionDesktopOwned(nint window)
     {
         var aboveDesktop = GetWindow(DesktopParent, 3);
@@ -259,6 +266,8 @@ public sealed partial class WindowsOverlayService
         int x, int y, int width, int height, nint parent, nint menu, nint instance, nint data);
     [DllImport("user32.dll")] private static extern bool DestroyWindow(nint window);
     [DllImport("user32.dll")] private static extern bool ShowWindow(nint window, int command);
+    [DllImport("user32.dll")] private static extern bool ReleaseCapture();
+    [DllImport("user32.dll")] private static extern nint SendMessage(nint window, uint message, nint parameter, nint data);
     [DllImport("user32.dll")] private static extern nint GetParent(nint window);
     [DllImport("user32.dll", SetLastError = true)] private static extern nint SetParent(nint window, nint parent);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern nint FindWindow(string name, string? title);

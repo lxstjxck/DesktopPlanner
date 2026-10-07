@@ -23,9 +23,7 @@ public partial class WidgetWindow : UserControl
     private bool initialized, closing, refreshingDesktop, interactionLocked;
     private HwndSource? contentSource;
     private nint hostWindow;
-    private bool desktopVisible, dragging, desktopPositionPending, desktopPositionWarningLogged;
-    private System.Drawing.Point dragStart;
-    private (double X, double Y) dragPosition;
+    private bool desktopVisible, desktopPositionPending, desktopPositionWarningLogged;
     public nint Handle => hostWindow;
     public new bool IsVisible => desktopVisible;
     public string Title { get; private set; } = "";
@@ -64,8 +62,6 @@ public partial class WidgetWindow : UserControl
             ScheduleSave(); RefreshGlass();
         };
         saveTimer.Tick += async (_, _) => { saveTimer.Stop(); try { await FlushAsync(); } catch (Exception ex) { SaveFailed?.Invoke(ex); } };
-        PreviewMouseMove += DragWidget;
-        PreviewMouseLeftButtonUp += (_, _) => { if (dragging) { dragging = false; ReleaseMouseCapture(); ScheduleSave(); } };
         PreviewKeyDown += async (_, e) =>
         {
             if (e.Key != Key.Z || Keyboard.Modifiers != ModifierKeys.Control || Keyboard.FocusedElement is TextBoxBase) return;
@@ -224,6 +220,8 @@ public partial class WidgetWindow : UserControl
         await store.SaveLayoutAsync(Layout);
     }
     public void CloseForExit() { saveTimer.Stop(); closing = true; ReleaseHost(); }
+    public void PrepareForRemoval() { saveTimer.Stop(); closing = true; IsEnabled = false; }
+    public void CancelRemoval() { closing = false; IsEnabled = true; ScheduleSave(); }
     private void MoveWindow(object sender, MouseButtonEventArgs e)
     {
         if (Layout.IsPositionLocked || e.ChangedButton != MouseButton.Left) return;
@@ -233,18 +231,9 @@ public partial class WidgetWindow : UserControl
                 if (current is Button or TextBoxBase) return;
         }
         if (Handle == 0) return;
-        dragging = true;
-        dragStart = Forms.Cursor.Position;
-        var position = overlay.GetPosition(Handle);
-        dragPosition = (position.X, position.Y);
-        CaptureMouse();
         e.Handled = true;
-    }
-    private void DragWidget(object sender, MouseEventArgs e)
-    {
-        if (!dragging || Handle == 0 || e.LeftButton != MouseButtonState.Pressed) return;
         var pointer = Forms.Cursor.Position;
-        overlay.Place(Handle, dragPosition.X + pointer.X - dragStart.X, dragPosition.Y + pointer.Y - dragStart.Y);
+        overlay.DragDesktopOwned(Handle, pointer.X, pointer.Y);
         ScheduleSave();
     }
     private void ResizeWidget(object sender, DragDeltaEventArgs e)

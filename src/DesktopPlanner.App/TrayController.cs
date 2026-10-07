@@ -5,6 +5,7 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Interop;
 using System.Runtime.InteropServices;
+using Media = System.Windows.Media;
 namespace DesktopPlanner.App;
 
 internal sealed class TrayController : IDisposable
@@ -14,14 +15,32 @@ internal sealed class TrayController : IDisposable
     private readonly ContextMenu menu = new() { Placement = PlacementMode.MousePoint };
     private readonly Separator widgetMenuMarker = new();
     private readonly List<MenuItem> widgetItems = [];
+    private MenuItem? confirmationItem;
+    private bool deleteInProgress;
     private readonly IReadOnlyList<WidgetWindow> widgets;
-    public TrayController(IReadOnlyList<WidgetWindow> widgets, Action toggleLock, Func<bool> isLocked, Action restore, Func<Task> arrange, Func<Task> reset, Action openLogs, Func<Task> exit)
+    private readonly Func<WidgetWindow, Task> deleteTracker;
+    public TrayController(IReadOnlyList<WidgetWindow> widgets, Action toggleLock, Func<bool> isLocked, Action restore, Func<Task> arrange, Func<WidgetWindow, Task> deleteTracker, Func<Task> reset, Action openLogs, Func<Task> exit)
     {
         this.widgets = widgets;
-        menu.Items.Add(new MenuItem { Header = "DesktopPlanner · рабочий стол", IsEnabled = false });
+        this.deleteTracker = deleteTracker;
+        menu.Items.Add(new MenuItem { Header = "DesktopPlanner", IsEnabled = false });
         menu.Items.Add(new Separator());
         menu.Items.Add(widgetMenuMarker); RefreshWidgets();
-        menu.Items.Add(new Separator());
+        menu.Closed += (_, _) => HideDeleteConfirmation();
+        menu.Opened += (_, _) =>
+        {
+            foreach (var item in widgetItems)
+            {
+                var widget = (WidgetWindow)item.Tag;
+                if (item.Header is Grid row)
+                {
+                    ((TextBlock)row.Children[0]).Text = widget.Title;
+                    System.Windows.Automation.AutomationProperties.SetName((Button)row.Children[1], $"Удалить {widget.Title}");
+                }
+                else item.Header = widget.Title;
+                item.IsChecked = widget.Layout.IsVisible;
+            }
+        };
         var locked = new MenuItem { Header = "Пропускать ввод · Ctrl+Shift+Space", IsCheckable = true };
         locked.Click += (_, _) => toggleLock(); menu.Opened += (_, _) => locked.IsChecked = isLocked(); menu.Items.Add(locked);
         var pinned = new MenuItem { Header = "Закрепить все виджеты", IsCheckable = true };
@@ -41,7 +60,7 @@ internal sealed class TrayController : IDisposable
         menu.Opened += (_, _) => pinned.IsChecked = widgets.All(w => w.Layout.IsPositionLocked);
         menu.Items.Add(pinned);
         AddAction("Вернуть виджеты на экраны", (_, _) => restore());
-        var arrangeItem = AddAction("Расположить как на референсе", async (_, _) => await arrange());
+        var arrangeItem = AddAction("Сбросить расположение виджетов", async (_, _) => await arrange());
         menu.Opened += (_, _) => arrangeItem.IsEnabled = !widgets.Any(w => w.Layout.IsPositionLocked);
         var startup = new MenuItem { Header = "Запускать вместе с Windows", IsCheckable = true };
         startup.IsEnabled = Environment.GetEnvironmentVariable("DESKTOPPLANNER_DATA_DIR") is null;
@@ -72,16 +91,84 @@ internal sealed class TrayController : IDisposable
     }
     public void RefreshWidgets()
     {
+        HideDeleteConfirmation();
         foreach (var item in widgetItems) menu.Items.Remove(item);
         widgetItems.Clear();
         var index = menu.Items.IndexOf(widgetMenuMarker);
         foreach (var widget in widgets)
         {
-            var item = new MenuItem { Header = widget.Title, IsCheckable = true };
-            item.Click += (_, _) => widget.SetVisible(!widget.Layout.IsVisible);
-            menu.Opened += (_, _) => { item.Header = widget.Title; item.IsChecked = widget.Layout.IsVisible; };
+            var item = new MenuItem { Header = widget.Title, IsCheckable = true, IsChecked = widget.Layout.IsVisible, StaysOpenOnClick = true, Tag = widget };
+            item.Click += (_, _) =>
+            {
+                widget.SetVisible(!widget.Layout.IsVisible);
+                item.IsChecked = widget.Layout.IsVisible;
+            };
+            if (widget.Layout.WidgetType == DesktopPlanner.Domain.WidgetType.MonthTracker && widget.Layout.TrackerId != DesktopPlanner.Domain.WidgetLayout.DefaultTrackerId)
+            {
+                var row = new Grid { HorizontalAlignment = HorizontalAlignment.Stretch };
+                row.ColumnDefinitions.Add(new ColumnDefinition());
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                row.Children.Add(new TextBlock { Text = widget.Title, VerticalAlignment = VerticalAlignment.Center });
+                var delete = new Button { Style = (Style)System.Windows.Application.Current.FindResource("TrayDeleteButton"), ToolTip = "Удалить трекер" };
+                System.Windows.Automation.AutomationProperties.SetName(delete, $"Удалить {widget.Title}");
+                Grid.SetColumn(delete, 1);
+                delete.Click += (_, e) =>
+                {
+                    e.Handled = true;
+                    menu.Dispatcher.BeginInvoke(() => ShowDeleteConfirmation(widget), System.Windows.Threading.DispatcherPriority.ContextIdle);
+                };
+                row.Children.Add(delete);
+                item.Header = row;
+            }
             menu.Items.Insert(index++, item); widgetItems.Add(item);
         }
+    }
+    private void ShowDeleteConfirmation(WidgetWindow widget)
+    {
+        if (deleteInProgress || !widgets.Contains(widget)) return;
+        HideDeleteConfirmation();
+        foreach (var item in menu.Items.OfType<UIElement>()) item.Visibility = Visibility.Collapsed;
+
+        var content = new StackPanel();
+        content.Children.Add(new TextBlock { Text = "Удалить трекер?", FontWeight = FontWeights.SemiBold, FontSize = 15, Foreground = Media.Brushes.White });
+        content.Children.Add(new TextBlock { Text = $"«{widget.Title}» и все его отметки будут удалены.", TextWrapping = TextWrapping.Wrap, Foreground = Media.Brushes.White, Margin = new Thickness(0, 8, 0, 12) });
+        var actions = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+        var cancel = new Button { Content = "Отмена", MinWidth = 76 };
+        cancel.Click += (_, e) => { e.Handled = true; HideDeleteConfirmation(); };
+        var confirm = new Button { Content = "Удалить", MinWidth = 76, Background = new Media.SolidColorBrush(Media.Color.FromRgb(151, 59, 72)) };
+        confirm.Click += async (_, e) =>
+        {
+            e.Handled = true;
+            if (deleteInProgress) return;
+            deleteInProgress = true;
+            confirm.IsEnabled = false;
+            cancel.IsEnabled = false;
+            menu.IsOpen = false;
+            try
+            {
+                await menu.Dispatcher.InvokeAsync(() => { }, System.Windows.Threading.DispatcherPriority.ContextIdle);
+                await deleteTracker(widget);
+            }
+            finally { deleteInProgress = false; }
+        };
+        actions.Children.Add(cancel); actions.Children.Add(confirm); content.Children.Add(actions);
+        var card = new Border
+        {
+            Background = new Media.SolidColorBrush(Media.Color.FromArgb(238, 38, 57, 78)),
+            BorderBrush = new Media.SolidColorBrush(Media.Color.FromArgb(120, 164, 207, 244)),
+            BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(12), Padding = new Thickness(14),
+            MinWidth = 250, MaxWidth = 320, Child = content
+        };
+        confirmationItem = new MenuItem { Header = card, Style = (Style)System.Windows.Application.Current.FindResource("TrayConfirmationItem") };
+        menu.Items.Add(confirmationItem);
+        menu.IsOpen = true;
+    }
+    private void HideDeleteConfirmation()
+    {
+        if (confirmationItem is null) return;
+        menu.Items.Remove(confirmationItem);
+        confirmationItem = null;
+        foreach (var item in menu.Items.OfType<UIElement>()) item.Visibility = Visibility.Visible;
     }
     private MenuItem AddAction(string title, RoutedEventHandler action)
     {

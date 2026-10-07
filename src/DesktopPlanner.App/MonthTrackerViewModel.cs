@@ -57,6 +57,11 @@ public sealed class MonthTrackerViewModel : ObservableObject
     }
 
     public Task LoadAsync() => LoadMonthAsync(Month);
+    public async Task WhenIdleAsync()
+    {
+        await gate.WaitAsync();
+        gate.Release();
+    }
     public void ClearAfterReset()
     {
         foreach (var day in Days) day.MarkColor = null;

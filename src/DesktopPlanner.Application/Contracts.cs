@@ -26,6 +26,7 @@ public interface IPlannerStore
     Task SaveNoteAsync(string text);
     Task<List<WidgetLayout>> GetLayoutsAsync();
     Task SaveLayoutAsync(WidgetLayout layout);
+    Task<bool> DeleteTrackerAsync(string trackerId);
     Task<List<HabitDayMark>> GetHabitDayMarksAsync(string trackerId, DateTime from, DateTime to);
     Task SaveHabitDayMarkAsync(HabitDayMark mark);
     Task DeleteHabitDayMarkAsync(string trackerId, DateTime date);

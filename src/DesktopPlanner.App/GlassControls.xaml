@@ -2,6 +2,17 @@
  <LinearGradientBrush x:Key="GlassMenuSurface" StartPoint="0,0" EndPoint="1,1"><GradientStop Color="#F04F647B"/><GradientStop Color="#F027384E" Offset="1"/></LinearGradientBrush>
  <LinearGradientBrush x:Key="GlassEdge" StartPoint="0,0" EndPoint="1,1"><GradientStop Color="#A0FFFFFF"/><GradientStop Color="#20FFFFFF" Offset=".5"/><GradientStop Color="#60A4CFF4" Offset="1"/></LinearGradientBrush>
  <SolidColorBrush x:Key="GlassAccent" Color="#8FC3F7"/>
+ <Style x:Key="TrayDeleteButton" TargetType="Button">
+  <Setter Property="Width" Value="24"/><Setter Property="Height" Value="24"/><Setter Property="Cursor" Value="Hand"/>
+  <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
+   <Grid Background="Transparent"><Path x:Name="Cross" Data="M 2,2 L 12,12 M 12,2 L 2,12" Width="14" Height="14" Stroke="#B8D5EA" StrokeThickness="1.6" StrokeStartLineCap="Round" StrokeEndLineCap="Round" HorizontalAlignment="Center" VerticalAlignment="Center"/></Grid>
+   <ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Cross" Property="Stroke" Value="White"/></Trigger></ControlTemplate.Triggers>
+  </ControlTemplate></Setter.Value></Setter>
+ </Style>
+ <Style x:Key="TrayConfirmationItem" TargetType="MenuItem">
+  <Setter Property="StaysOpenOnClick" Value="True"/>
+  <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="MenuItem"><ContentPresenter ContentSource="Header"/></ControlTemplate></Setter.Value></Setter>
+ </Style>
  <Style TargetType="CheckBox">
   <Setter Property="Foreground" Value="#FAFCFF"/><Setter Property="Margin" Value="4,5"/><Setter Property="Padding" Value="3"/>
   <Setter Property="Cursor" Value="Hand"/><Setter Property="VerticalContentAlignment" Value="Center"/>

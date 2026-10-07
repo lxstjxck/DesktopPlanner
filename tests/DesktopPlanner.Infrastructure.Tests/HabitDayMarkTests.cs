@@ -49,6 +49,31 @@ public sealed class HabitDayMarkTests : IDisposable
         Assert.Equal("#FFD166", Assert.Single(await store.GetHabitDayMarksAsync("study", date, date.AddDays(1))).ColorHex);
     }
 
+    [Fact]
+    public async Task DeletingAdditionalTrackerRemovesOnlyItsLayoutAndMarks()
+    {
+        using var store = Create();
+        await store.InitializeAsync();
+        var date = new DateTime(2026, 9, 12);
+        await store.SaveLayoutAsync(new WidgetLayout { WidgetType = WidgetType.MonthTracker, TrackerId = WidgetLayout.DefaultTrackerId });
+        await store.SaveLayoutAsync(new WidgetLayout { WidgetType = WidgetType.MonthTracker, TrackerId = "extra" });
+        await store.SaveLayoutAsync(new WidgetLayout { WidgetType = WidgetType.MonthTracker, TrackerId = "other" });
+        foreach (var id in new[] { WidgetLayout.DefaultTrackerId, "extra", "other" })
+            await store.SaveHabitDayMarkAsync(new HabitDayMark { TrackerId = id, Date = date, ColorHex = "#5CC8FF" });
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => store.DeleteTrackerAsync(WidgetLayout.DefaultTrackerId));
+        Assert.True(await store.DeleteTrackerAsync("extra"));
+        Assert.False(await store.DeleteTrackerAsync("extra"));
+        Assert.Empty(await store.GetHabitDayMarksAsync("extra", date, date.AddDays(1)));
+        var layouts = await store.GetLayoutsAsync();
+        Assert.DoesNotContain(layouts, layout => layout.TrackerId == "extra");
+        foreach (var id in new[] { WidgetLayout.DefaultTrackerId, "other" })
+        {
+            Assert.Contains(layouts, layout => layout.TrackerId == id);
+            Assert.Single(await store.GetHabitDayMarksAsync(id, date, date.AddDays(1)));
+        }
+    }
+
     public void Dispose()
     {
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
