@@ -18,7 +18,7 @@ internal static class StartupRegistration
         var executable = Environment.ProcessPath ?? throw new InvalidOperationException("Не найден путь приложения.");
         var command = $"\"{executable}\"";
         if (Path.GetFileNameWithoutExtension(executable).Equals("dotnet", StringComparison.OrdinalIgnoreCase))
-            command += $" \"{typeof(App).Assembly.Location}\"";
+            command += $" \"{Path.Combine(AppContext.BaseDirectory, "DesktopPlanner.App.dll")}\"";
         if (command.Length > 260) throw new InvalidOperationException("Путь приложения слишком длинный для автозапуска Windows.");
         key.SetValue(ValueName, command, RegistryValueKind.String);
     }

@@ -27,13 +27,14 @@ if (!(Test-Path -LiteralPath $CompilerPath)) { throw "Inno Setup compiler not fo
 if (!$SkipPublish) {
     # Publish to a fresh directory to prevent stale binaries entering an update.
     $stage = Join-Path $root ('artifacts/publish/build-' + [guid]::NewGuid().ToString('N'))
-    & dotnet publish (Join-Path $root 'src/DesktopPlanner.App') -c Release -r win-x64 --self-contained true '-p:PublishSingleFile=false' '-p:PublishTrimmed=false' "-p:DesktopPlannerVersion=$Version" '-p:DebugType=None' '-p:DebugSymbols=false' -o $stage
+    & dotnet publish (Join-Path $root 'src/DesktopPlanner.App') -c Release -r win-x64 --self-contained true '-p:PublishSingleFile=true' '-p:IncludeNativeLibrariesForSelfExtract=true' '-p:PublishTrimmed=false' "-p:DesktopPlannerVersion=$Version" '-p:DebugType=None' '-p:DebugSymbols=false' -o $stage
     if ($LASTEXITCODE -ne 0) { throw 'dotnet publish failed.' }
     $publish = $stage
 }
-foreach ($required in @('DesktopPlanner.App.exe','DesktopPlanner.App.dll','coreclr.dll','hostfxr.dll','PresentationFramework.dll','e_sqlite3.dll')) {
-    if (!(Test-Path -LiteralPath (Join-Path $publish $required))) { throw "Incomplete self-contained payload: $required" }
-}
+$executable = Join-Path $publish 'DesktopPlanner.App.exe'
+if (!(Test-Path -LiteralPath $executable -PathType Leaf)) { throw "Single-file executable not found: $executable" }
+$extraFiles = @(Get-ChildItem -LiteralPath $publish -Force | Where-Object Name -ne 'DesktopPlanner.App.exe')
+if ($extraFiles.Count -ne 0) { throw "Single-file publish contains extra files: $($extraFiles.Name -join ', ')" }
 & $CompilerPath /Q "/DAppVersion=$Version" "/DPublishDir=$publish" (Join-Path $root 'installer/DesktopPlanner.iss')
 if ($LASTEXITCODE -ne 0) { throw 'Installer compilation failed.' }
 $setup = Join-Path $root "artifacts/installer/DesktopPlanner-Setup-$Version-win-x64.exe"

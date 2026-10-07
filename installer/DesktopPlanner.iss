@@ -49,7 +49,27 @@ Name: "desktopicon"; Description: "{cm:DesktopShortcut}"; Flags: unchecked
 Name: "startup"; Description: "{cm:StartWithWindows}"; Flags: unchecked
 
 [Files]
-Source: "{#PublishDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "*.pdb"
+Source: "{#PublishDir}\DesktopPlanner.App.exe"; DestDir: "{app}"; Flags: ignoreversion
+
+[InstallDelete]
+; Remove files from the previous multi-file publish only when upgrading that layout.
+Type: files; Name: "{app}\*.dll"; Check: IsLegacyInstall
+Type: filesandordirs; Name: "{app}\cs"; Check: IsLegacyInstall
+Type: filesandordirs; Name: "{app}\de"; Check: IsLegacyInstall
+Type: filesandordirs; Name: "{app}\es"; Check: IsLegacyInstall
+Type: filesandordirs; Name: "{app}\fr"; Check: IsLegacyInstall
+Type: filesandordirs; Name: "{app}\it"; Check: IsLegacyInstall
+Type: filesandordirs; Name: "{app}\ja"; Check: IsLegacyInstall
+Type: filesandordirs; Name: "{app}\ko"; Check: IsLegacyInstall
+Type: filesandordirs; Name: "{app}\pl"; Check: IsLegacyInstall
+Type: filesandordirs; Name: "{app}\pt-BR"; Check: IsLegacyInstall
+Type: filesandordirs; Name: "{app}\ru"; Check: IsLegacyInstall
+Type: filesandordirs; Name: "{app}\tr"; Check: IsLegacyInstall
+Type: filesandordirs; Name: "{app}\zh-Hans"; Check: IsLegacyInstall
+Type: filesandordirs; Name: "{app}\zh-Hant"; Check: IsLegacyInstall
+Type: files; Name: "{app}\createdump.exe"; Check: IsLegacyInstall
+Type: files; Name: "{app}\DesktopPlanner.App.runtimeconfig.json"; Check: IsLegacyInstall
+Type: files; Name: "{app}\DesktopPlanner.App.deps.json"; Check: IsLegacyInstall
 
 [Icons]
 Name: "{userprograms}\DesktopPlanner"; Filename: "{app}\DesktopPlanner.App.exe"; WorkingDir: "{app}"
@@ -67,6 +87,11 @@ Type: filesandordirs; Name: "{localappdata}\DesktopPlanner"
 
 [Code]
 const RunKey = 'Software\Microsoft\Windows\CurrentVersion\Run';
+
+function IsLegacyInstall: Boolean;
+begin
+  Result := FileExists(ExpandConstant('{app}\DesktopPlanner.App.deps.json'));
+end;
 
 procedure InitializeWizard;
 var Existing: String;
